@@ -8,8 +8,9 @@ env
 __pycache__
 **/__pycache__
 *.py[cod]
-*.sqlite3
 .test_db.sqlite3
+# Production SQLite — must be included in the image (see DEPLOY.md).
+# !db.sqlite3 is implicit if we only ignore test DB above.
 staticfiles
 .pytest_cache
 .mypy_cache

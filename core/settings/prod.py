@@ -17,6 +17,9 @@ if SECRET_KEY.strip() in _PLACEHOLDER_SECRET_KEYS:
         "SECRET_KEY must be a non-placeholder value when DEBUG is False."
     )
 
+# Production uses SQLite (backend/db.sqlite3) baked into the Docker image.
+# Do not set DATABASE_URL on Railway — leave unset so base.py keeps SQLite.
+
 ALLOWED_HOSTS = [
     "lundrii-backend-production.up.railway.app",
     "healthcheck.railway.app",
