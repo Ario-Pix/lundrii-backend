@@ -1,0 +1,276 @@
+"""
+Institute fairness rules: quota, advance window, past slots,
+late vs free cancel.
+
+When a rule blocks an action, callers receive which rule and ``clears_at``.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+
+from django.utils import timezone
+
+from base.exceptions import OUTSIDE_ADVANCE_WINDOW, PAST_SLOT, RULE_BLOCKED
+from laundry.models import (
+    Booking,
+    Institute,
+    InstituteRule,
+    Machine,
+    MachineKind,
+    Student,
+)
+
+RULE_QUOTA = "quota"
+RULE_COOLDOWN = "cooldown"
+RULE_ADVANCE_WINDOW = "advance_window"
+RULE_PAST_SLOT = "past_slot"
+
+
+@dataclass(frozen=True)
+class RuleBlock:
+    rule: str
+    clears_at: datetime | None
+    detail: str
+    code: str = RULE_BLOCKED
+
+
+def get_institute_rules(institute: Institute) -> InstituteRule:
+    try:
+        return institute.rules
+    except InstituteRule.DoesNotExist:
+        return InstituteRule(institute=institute)
+
+
+def booking_counts_toward_quota(machine: Machine, rules: InstituteRule) -> bool:
+    if machine.kind == MachineKind.WASHER:
+        return True
+    return bool(rules.dryer_cap_enabled)
+
+
+def _profile_quota_kinds(rules: InstituteRule) -> list[str]:
+    if rules.dryer_cap_enabled:
+        return [MachineKind.WASHER, MachineKind.DRYER]
+    return [MachineKind.WASHER]
+
+
+def _kinds_for_quota_and_cooldown(machine: Machine, rules: InstituteRule) -> list[str]:
+    if machine.kind == MachineKind.DRYER and not rules.dryer_cap_enabled:
+        return []
+    return _profile_quota_kinds(rules)
+
+
+def _aware(dt: datetime) -> datetime:
+    if timezone.is_aware(dt):
+        return dt
+    return timezone.make_aware(dt, timezone.get_current_timezone())
+
+
+def _quota_counting_starts(
+    student: Student,
+    kinds: list[str],
+    *,
+    exclude_booking_id=None,
+) -> list[datetime]:
+    qs = Booking.objects.filter(
+        student=student,
+        is_active=True,
+        counts_against_quota=True,
+        machine__kind__in=kinds,
+    )
+    if exclude_booking_id:
+        qs = qs.exclude(pk=exclude_booking_id)
+    return list(qs.values_list("starts_at", flat=True))
+
+
+def quota_week_bounds(instant: datetime) -> tuple[datetime, datetime]:
+    """Monday 00:00 inclusive through next Monday 00:00 exclusive.
+
+    Weeks follow the institute wall clock (``TIME_ZONE``), not UTC.
+    """
+    local = timezone.localtime(_aware(instant))
+    monday = local.date() - timedelta(days=local.weekday())
+    start = timezone.make_aware(
+        datetime.combine(monday, datetime.min.time()),
+        timezone.get_current_timezone(),
+    )
+    return start, start + timedelta(days=7)
+
+
+def _starts_in_week(
+    starts: list[datetime],
+    week_start: datetime,
+    week_end: datetime,
+) -> list[datetime]:
+    return [start for start in starts if week_start <= _aware(start) < week_end]
+
+
+def check_booking_rules(
+    student: Student,
+    machine: Machine,
+    starts_at: datetime,
+    ends_at: datetime,
+    *,
+    now: datetime | None = None,
+    rules: InstituteRule | None = None,
+    exclude_booking_id=None,
+) -> RuleBlock | None:
+    """
+    Return a ``RuleBlock`` if the student may not claim this slot, else None.
+
+    Does not check machine offline, gender, or first-come uniqueness.
+    """
+    now = _aware(now or timezone.now())
+    starts_at = _aware(starts_at)
+    ends_at = _aware(ends_at)
+    rules = rules or get_institute_rules(student.institute)
+
+    if starts_at <= now:
+        return RuleBlock(
+            rule=RULE_PAST_SLOT,
+            clears_at=None,
+            detail="That slot has already started.",
+            code=PAST_SLOT,
+        )
+
+    advance_days = int(rules.advance_window_days or 0)
+    local_start = timezone.localtime(starts_at)
+    local_now = timezone.localtime(now)
+    latest_date = local_now.date() + timedelta(days=advance_days)
+    if local_start.date() > latest_date:
+        window_opens = timezone.make_aware(
+            datetime.combine(
+                local_start.date() - timedelta(days=advance_days),
+                datetime.min.time(),
+            ),
+            timezone.get_current_timezone(),
+        )
+        return RuleBlock(
+            rule=RULE_ADVANCE_WINDOW,
+            clears_at=window_opens,
+            detail=(
+                f"You can only book {advance_days} day"
+                f"{'s' if advance_days != 1 else ''} ahead."
+            ),
+            code=OUTSIDE_ADVANCE_WINDOW,
+        )
+
+    kinds = _kinds_for_quota_and_cooldown(machine, rules)
+    if not kinds:
+        return None
+
+    limit = int(rules.quota_limit or 0)
+    week_start, week_end = quota_week_bounds(starts_at)
+    existing_starts = _quota_counting_starts(
+        student,
+        kinds,
+        exclude_booking_id=exclude_booking_id,
+    )
+    used = len(_starts_in_week(existing_starts, week_start, week_end))
+    if used >= limit:
+        return RuleBlock(
+            rule=RULE_QUOTA,
+            clears_at=week_end,
+            detail=(
+                f"Weekly quota is {limit} wash"
+                f"{'es' if limit != 1 else ''} Monday to Sunday."
+            ),
+            code=RULE_BLOCKED,
+        )
+
+    return None
+
+
+def is_late_cancel(
+    booking: Booking,
+    *,
+    now: datetime | None = None,
+    rules: InstituteRule | None = None,
+) -> bool:
+    now = _aware(now or timezone.now())
+    rules = rules or get_institute_rules(booking.student.institute)
+    cutoff = timedelta(hours=int(rules.cancellation_cutoff_hours or 0))
+    return booking.starts_at - now < cutoff
+
+
+def quota_status(
+    student: Student,
+    *,
+    now: datetime | None = None,
+    rules: InstituteRule | None = None,
+) -> dict:
+    """
+    Monday–Sunday quota usage for profile display.
+
+    Counts the same bookings as ``check_booking_rules`` (``counts_against_quota``,
+    washer — plus dryer when dryer-cap is on). Bookings in other weeks are
+    excluded; upcoming starts later this week still consume this week's quota.
+    ``resets_at`` is always next Monday 00:00.
+    """
+    now = _aware(now or timezone.now())
+    rules = rules or get_institute_rules(student.institute)
+    window_days = int(rules.quota_window_days or 7)
+    limit = int(rules.quota_limit or 0)
+    week_start, week_end = quota_week_bounds(now)
+    kinds = _profile_quota_kinds(rules)
+    starts = _quota_counting_starts(student, kinds)
+    used = len(_starts_in_week(starts, week_start, week_end))
+    return {
+        "used": used,
+        "limit": limit,
+        "window_days": window_days,
+        "resets_at": week_end,
+    }
+
+
+def cooldown_clears_at(
+    student: Student,
+    *,
+    now: datetime | None = None,
+    rules: InstituteRule | None = None,
+) -> datetime | None:
+    """Cooldown is not enforced. Always ``None``."""
+    return None
+
+
+def student_gender(student: Student) -> str:
+    """Gender used for hostel eligibility and booking.
+
+    Signup copies the hostel designation onto the student. Some accounts have
+    ``home_hostel`` with a blank ``gender`` column (profile PATCH used to skip
+    it). Until an admin assigns otherwise, the home hostel's designation is
+    the student's gender.
+    """
+    if student.gender:
+        return student.gender
+    hostel = student.home_hostel
+    if hostel is not None and hostel.gender:
+        return hostel.gender
+    return ""
+
+
+def visible_hostels(student: Student):
+    gender = student_gender(student)
+    if not gender:
+        return student.institute.hostels.none()
+    return student.institute.hostels.filter(
+        is_active=True,
+        gender=gender,
+    )
+
+
+def machine_is_visible(student: Student, machine: Machine) -> bool:
+    """Whether a student may list slots or book on this machine.
+
+    Eligibility is institute + same gender — not limited to ``home_hostel``.
+    Students may book in any active hostel returned by ``visible_hostels``.
+    """
+    if not machine.is_active or not machine.hostel.is_active:
+        return False
+    if machine.hostel.institute_id != student.institute_id:
+        return False
+    gender = student_gender(student)
+    if not gender or machine.hostel.gender != gender:
+        return False
+    return True

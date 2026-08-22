@@ -1,0 +1,25 @@
+{% extends "emails/base.html" %}
+{% block title %}Verify your Lundrii email{% endblock %}
+{% block preheader %}Confirm your email with code {{ otp }}, or open the link in this message.{% endblock %}
+{% block heading %}
+<p style="margin:0 0 8px 0;font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#9095a3;">Account</p>
+<p style="margin:0 0 12px 0;font-size:22px;font-weight:700;letter-spacing:-0.03em;line-height:1.25;color:#0a1533;">Confirm your email</p>
+{% endblock %}
+{% block content %}
+<p style="margin:0 0 24px 0;color:#5c6370;">Enter this code in the app, or tap the button below.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px 0;">
+  <tr>
+    <td style="background-color:#f3f4f6;border-radius:14px;padding:16px 24px;">
+      <span style="font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:28px;font-weight:700;letter-spacing:0.28em;color:#0a1533;">{{ otp }}</span>
+    </td>
+  </tr>
+</table>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0">
+  <tr>
+    <td style="background-color:#0a1533;border-radius:14px;">
+      <a href="{{ link }}" style="display:inline-block;padding:12px 22px;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;letter-spacing:-0.01em;">Verify email</a>
+    </td>
+  </tr>
+</table>
+<p style="margin:20px 0 0 0;font-size:12px;line-height:1.5;color:#9095a3;word-break:break-all;">{{ link }}</p>
+{% endblock %}

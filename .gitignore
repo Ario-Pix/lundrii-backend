@@ -1,0 +1,48 @@
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+
+# Secrets (keep committed examples)
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# Django
+db.sqlite3
+db.sqlite3-journal
+*.sqlite3
+.test_db.sqlite3
+media/
+staticfiles/
+local_settings.py
+
+# Tests / coverage
+.pytest_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# Logs
+*.log
+outbox.log
+
+# Misc
+.DS_Store
+.cache/

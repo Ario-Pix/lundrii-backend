@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  <title>{% block title %}Lundrii{% endblock %}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#e9e9e6;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">
+    {% block preheader %}Lundrii{% endblock %}
+  </div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#e9e9e6;">
+    <tr>
+      <td align="center" style="padding:40px 16px;">
+        <table role="presentation" width="520" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;width:100%;background-color:#ffffff;border-radius:20px;overflow:hidden;">
+          <tr>
+            <td style="padding:28px 32px 0 32px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td valign="middle" style="padding-right:9px;">
+                    {# Site LogoMark: 28×32 washer, CSS only. #}
+                    <table role="presentation" width="28" height="32" cellpadding="0" cellspacing="0" border="0" style="background-color:#0b5fa8;background-image:linear-gradient(160deg,#0a2a6b 0%,#0b5fa8 60%,#0f9bc4 100%);border-radius:9px;">
+                      <tr>
+                        <td align="center" valign="top" style="padding:5px 0 0 0;">
+                          <table role="presentation" width="17" height="3" cellpadding="0" cellspacing="0" border="0" style="background-color:#9ec9e6;border-radius:2px;">
+                            <tr>
+                              <td style="font-size:0;line-height:3px;height:3px;">&nbsp;</td>
+                            </tr>
+                          </table>
+                          <table role="presentation" width="18" height="18" cellpadding="0" cellspacing="0" border="0" style="margin-top:3px;background-color:#ffffff;border-radius:9px;">
+                            <tr>
+                              <td align="center" valign="middle" style="height:18px;">
+                                <table role="presentation" width="10" height="10" cellpadding="0" cellspacing="0" border="0" style="background-color:#0b5fa8;border-radius:5px;">
+                                  <tr>
+                                    <td style="font-size:0;line-height:10px;height:10px;">&nbsp;</td>
+                                  </tr>
+                                </table>
+                              </td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                  <td valign="middle" style="font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:21px;font-weight:800;letter-spacing:-0.04em;color:#0a1533;line-height:1;">
+                    Lundrii
+                  </td>
+                  <td valign="middle" style="padding-left:6px;">
+                    {# App wordmark success-dot. #}
+                    <table role="presentation" width="9" height="9" cellpadding="0" cellspacing="0" border="0" style="background-color:#37d392;border-radius:9px;">
+                      <tr>
+                        <td style="font-size:0;line-height:9px;height:9px;">&nbsp;</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:28px 32px 32px 32px;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#0a1533;font-size:15px;line-height:1.55;">
+              {% block heading %}{% endblock %}
+              {% block content %}{% endblock %}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 32px 28px 32px;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;line-height:1.5;color:#9095a3;">
+              {% block footer %}You received this because of an account action on Lundrii. If you didn’t request it, you can ignore this message.{% endblock %}
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

@@ -1,0 +1,17 @@
+.venv
+env
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+__pycache__
+**/__pycache__
+*.py[cod]
+*.sqlite3
+.test_db.sqlite3
+staticfiles
+.pytest_cache
+.mypy_cache
+*.md
+!DEPLOY.md

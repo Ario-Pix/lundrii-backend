@@ -1,0 +1,5 @@
+{% autoescape off %}Lundrii
+{% block content %}{% endblock %}
+
+{% block footer %}You received this email because of an account action on Lundrii. If you did not request it, you can ignore this message.{% endblock %}
+{% endautoescape %}

@@ -1,0 +1,6 @@
+{% extends "emails/base.txt" %}
+{% block content %}
+Your login code is {{ otp }}. It expires shortly.
+
+Do not share this code with anyone.
+{% endblock %}
