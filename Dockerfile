@@ -14,7 +14,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
-RUN chmod +x start.sh
+RUN chmod +x start.sh \
+    && python manage.py collectstatic --noinput
 
 EXPOSE 8000
 

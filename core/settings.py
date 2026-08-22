@@ -302,7 +302,8 @@ USE_X_FORWARDED_HOST = True
 if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
-    SECURE_SSL_REDIRECT = True
+    # Internal Railway health probes use HTTP — SECURE_SSL_REDIRECT returns 301 and fails checks.
+    SECURE_SSL_REDIRECT = not os.getenv("RAILWAY_ENVIRONMENT")
 
 # ---------------------------------------------------------------------------
 # DRF
