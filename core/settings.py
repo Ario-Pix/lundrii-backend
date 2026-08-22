@@ -257,6 +257,11 @@ CORS_ALLOWED_ORIGINS = [
     if o.strip()
 ]
 
+# Vercel production + preview URLs (project.vercel.app, *-git-*-team.vercel.app, …).
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://[\w.-]+\.vercel\.app$",
+]
+
 # Student/web clients stamp X-Client-Platform so bookings record `website`.
 # Without this, the browser preflight for register/login fails even when the
 # origin is allowed.
