@@ -192,7 +192,6 @@ class ViewsEnqueueTasksTests(APITestCase):
                 "phone": "+91 98220 41127",
                 "password": self.password,
                 "hostelId": str(self.hostel.id),
-                "floor": "3rd Floor",
             },
             format="json",
         )
@@ -254,7 +253,6 @@ class ViewsEnqueueTasksTests(APITestCase):
                         "phone": "+91 98220 41127",
                         "password": self.password,
                         "hostelId": str(self.hostel.id),
-                        "floor": "3rd Floor",
                     },
                     format="json",
                 )

@@ -39,7 +39,7 @@ Do not put real secrets in this file. Generate `SECRET_KEY` yourself and paste i
 | `CLOUDINARY_FOLDER` | Optional; default `lundrii`. |
 | `CLOUDINARY_URL` | Optional instead of the three Cloudinary vars. |
 
-**Do not set:** `DATABASE_URL`, `ALLOWED_HOSTS`, `CORS_ORIGINS`, `FRONTEND_URL` — hosts/CORS/frontend URL are in `core/settings/prod.py`; DB is SQLite without `DATABASE_URL`.
+**Do not set:** `DATABASE_URL` (prod always uses SQLite — a linked Postgres plugin will be ignored), `ALLOWED_HOSTS`, `CORS_ORIGINS`, `FRONTEND_URL`.
 
 Optional: `WEB_CONCURRENCY` (default `1` for SQLite), `TASKS_BACKEND`, JWT/OTP tunables (see `.env.example`).
 

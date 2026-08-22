@@ -25,7 +25,6 @@ class RegisterSerializer(serializers.Serializer):
     whatsapp_opt_in = serializers.BooleanField(required=False, default=False)
     hostelId = serializers.UUIDField(required=False)
     hostel_id = serializers.UUIDField(required=False)
-    floor = serializers.CharField(max_length=64)
 
     def validate_name(self, value: str) -> str:
         value = (value or "").strip()
@@ -45,12 +44,6 @@ class RegisterSerializer(serializers.Serializer):
     def validate_password(self, value: str) -> str:
         return _validate_password_value(value)
 
-    def validate_floor(self, value: str) -> str:
-        value = (value or "").strip()
-        if not value:
-            raise serializers.ValidationError("Select your floor.")
-        return value
-
     def validate(self, attrs):
         hostel_id = attrs.get("hostelId") or attrs.get("hostel_id")
         if not hostel_id:
@@ -66,7 +59,6 @@ class SignupHostelOptionSerializer(serializers.Serializer):
     gender = serializers.CharField()
     instituteId = serializers.UUIDField()
     instituteName = serializers.CharField()
-    floors = serializers.ListField(child=serializers.CharField())
 
 
 class SignupOptionsResponseSerializer(serializers.Serializer):

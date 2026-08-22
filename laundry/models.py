@@ -186,7 +186,7 @@ class Student(BaseModel):
         max_length=64,
         blank=True,
         default="",
-        help_text='Home floor in the hostel, e.g. "3rd Floor".',
+        help_text="Unused. Machines belong to a hostel, not to a student.",
     )
     email_verified_at = models.DateTimeField(null=True, blank=True)
     suspension_ends = models.DateTimeField(null=True, blank=True)

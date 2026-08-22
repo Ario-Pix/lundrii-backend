@@ -59,7 +59,6 @@ from base.exceptions import (
 )
 from base.permissions import user_is_administrator, user_is_super_administrator
 from laundry.models import Hostel, Student
-from laundry.services.floors import floors_for_hostel
 from laundry.services.rules import student_gender
 
 User = get_user_model()
@@ -192,7 +191,7 @@ def _active_user_by_email(email: str):
 
 
 class SignupOptionsView(APIView):
-    """Public hostel + floor lists for the sign-up dropdowns."""
+    """Public hostel list for the sign-up dropdown."""
 
     permission_classes = [AllowAny]
     authentication_classes: list = []
@@ -215,7 +214,6 @@ class SignupOptionsView(APIView):
                     "gender": hostel.gender,
                     "instituteId": str(hostel.institute_id),
                     "instituteName": hostel.institute.name,
-                    "floors": floors_for_hostel(hostel),
                 }
             )
         return Response({"hostels": payload})
@@ -264,14 +262,6 @@ class RegisterView(APIView):
                 extra={"hostelId": ["Hostel is outside your institute."]},
             )
 
-        allowed_floors = floors_for_hostel(hostel)
-        if data["floor"] not in allowed_floors:
-            raise APIError(
-                VALIDATION_ERROR,
-                detail="Select a floor for that hostel.",
-                extra={"floor": ["Unknown floor for this hostel."]},
-            )
-
         try:
             with transaction.atomic():
                 user = User.objects.create_user(
@@ -285,7 +275,6 @@ class RegisterView(APIView):
                     phone=data["phone"],
                     whatsapp_opt_in=data["whatsapp_opt_in"],
                     home_hostel=hostel,
-                    floor=data["floor"],
                     gender=hostel.gender,
                 )
         except IntegrityError as exc:

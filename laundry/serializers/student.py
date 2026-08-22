@@ -17,7 +17,6 @@ from laundry.models import (
     Strike,
     Student,
 )
-from laundry.services.floors import floors_for_hostel
 from laundry.services.notifications import notification_deep_link
 from laundry.services.rules import (
     cooldown_clears_at,
@@ -321,7 +320,6 @@ class MeUpdateSerializer(serializers.Serializer):
     phone = serializers.CharField(max_length=32, required=False)
     whatsappOptIn = serializers.BooleanField(required=False)
     whatsapp_opt_in = serializers.BooleanField(required=False)
-    floor = serializers.CharField(max_length=64, required=False)
     hostelId = serializers.UUIDField(required=False)
     hostel_id = serializers.UUIDField(required=False)
 
@@ -333,12 +331,6 @@ class MeUpdateSerializer(serializers.Serializer):
 
     def validate_phone(self, value: str) -> str:
         return (value or "").strip()
-
-    def validate_floor(self, value: str) -> str:
-        value = (value or "").strip()
-        if not value:
-            raise serializers.ValidationError("Select your floor.")
-        return value
 
     def validate(self, attrs):
         if "whatsappOptIn" in attrs and "whatsapp_opt_in" not in attrs:
@@ -373,17 +365,6 @@ class MeUpdateSerializer(serializers.Serializer):
                 )
             attrs["home_hostel"] = new_hostel
 
-        if "floor" in attrs:
-            target = attrs.get("home_hostel") or new_hostel or student.home_hostel
-            if target is None:
-                raise serializers.ValidationError(
-                    {"floor": ["Select your hostel first."]}
-                )
-            if attrs["floor"] not in floors_for_hostel(target):
-                raise serializers.ValidationError(
-                    {"floor": ["Unknown floor for this hostel."]}
-                )
-
         return attrs
 
     def update(self, instance: Student, validated_data) -> Student:
@@ -395,8 +376,6 @@ class MeUpdateSerializer(serializers.Serializer):
             instance.phone = validated_data["phone"]
         if "whatsapp_opt_in" in validated_data:
             instance.whatsapp_opt_in = validated_data["whatsapp_opt_in"]
-        if "floor" in validated_data:
-            instance.floor = validated_data["floor"]
         if not instance.gender and instance.home_hostel_id:
             instance.gender = instance.home_hostel.gender
         instance.save()

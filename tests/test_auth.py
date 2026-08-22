@@ -173,7 +173,6 @@ class AuthAPITests(APITestCase):
             "password": self.password,
             "whatsapp_opt_in": True,
             "hostelId": str(self.hostel.id),
-            "floor": "3rd Floor",
         }
         data.update(overrides)
         return data
@@ -211,7 +210,7 @@ class AuthAPITests(APITestCase):
     def test_register_creates_user_and_sends_verify(self, mock_send):
         response = self.client.post(
             "/api/v1/auth/register",
-            self._register_payload(),
+            self._register_payload(floor="3rd Floor"),
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -221,22 +220,22 @@ class AuthAPITests(APITestCase):
         student = user.student
         self.assertEqual(student.institute_id, self.institute.id)
         self.assertEqual(student.home_hostel_id, self.hostel.id)
-        self.assertEqual(student.floor, "3rd Floor")
+        self.assertFalse(student.floor)
         self.assertEqual(student.gender, Gender.MALE)
         self.assertIsNone(student.email_verified_at)
         mock_send.assert_called_once()
         self.assertTrue(mock_send.call_args.kwargs["otp"].isdigit())
         self.assertTrue(mock_send.call_args.kwargs["token"])
 
-    def test_signup_options_lists_hostels_and_floors(self):
+    def test_signup_options_lists_hostels(self):
         response = self.client.get("/api/v1/auth/signup-options")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         hostels = response.data["hostels"]
         self.assertEqual(len(hostels), 1)
         self.assertEqual(hostels[0]["name"], "Boys Hostel 1")
-        self.assertIn("3rd Floor", hostels[0]["floors"])
+        self.assertNotIn("floors", hostels[0])
 
-    def test_register_requires_hostel_and_floor(self):
+    def test_register_requires_hostel(self):
         response = self.client.post(
             "/api/v1/auth/register",
             {

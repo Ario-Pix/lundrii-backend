@@ -165,59 +165,38 @@ class MeAndNotificationAPITests(TestCase):
         self.assertEqual(self.student.home_hostel_id, self.boys.id)
         self.assertFalse(self.student.whatsapp_opt_in)
 
-    def test_patch_me_updates_hostel_and_floor(self):
+    def test_patch_me_updates_hostel(self):
         response = self.client.patch(
             "/api/v1/me",
-            {
-                "hostelId": str(self.boys_two.id),
-                "floor": "3rd Floor",
-            },
+            {"hostelId": str(self.boys_two.id)},
             format="json",
         )
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(str(response.data["hostelId"]), str(self.boys_two.id))
         self.assertEqual(response.data["hostelName"], "Boys 2")
-        self.assertEqual(response.data["floor"], "3rd Floor")
 
         self.student.refresh_from_db()
         self.assertEqual(self.student.home_hostel_id, self.boys_two.id)
-        self.assertEqual(self.student.floor, "3rd Floor")
 
     def test_patch_me_rejects_opposite_gender_hostel(self):
         response = self.client.patch(
             "/api/v1/me",
-            {"hostelId": str(self.girls.id), "floor": "3rd Floor"},
+            {"hostelId": str(self.girls.id)},
             format="json",
         )
         self.assertEqual(response.status_code, 400, response.data)
         self.student.refresh_from_db()
         self.assertEqual(self.student.home_hostel_id, self.boys.id)
 
-    def test_patch_me_rejects_invalid_floor(self):
+    def test_patch_me_ignores_floor(self):
         response = self.client.patch(
             "/api/v1/me",
             {"floor": "99th Floor"},
             format="json",
         )
-        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(response.status_code, 200, response.data)
         self.student.refresh_from_db()
         self.assertEqual(self.student.floor, "3rd Floor")
-
-    def test_patch_me_updates_floor_only(self):
-        Machine.objects.create(
-            hostel=self.boys,
-            kind=MachineKind.WASHER,
-            location_name="4th Floor · B Wing",
-        )
-        response = self.client.patch(
-            "/api/v1/me",
-            {"floor": "4th Floor"},
-            format="json",
-        )
-        self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(response.data["floor"], "4th Floor")
-        self.student.refresh_from_db()
-        self.assertEqual(self.student.floor, "4th Floor")
 
     def test_me_hostels_same_gender_with_is_home(self):
         response = self.client.get("/api/v1/me/hostels")
@@ -246,7 +225,7 @@ class MeAndNotificationAPITests(TestCase):
         self.student.save(update_fields=["gender", "updated_at"])
         response = self.client.patch(
             "/api/v1/me",
-            {"hostelId": str(self.boys_two.id), "floor": "3rd Floor"},
+            {"hostelId": str(self.boys_two.id)},
             format="json",
         )
         self.assertEqual(response.status_code, 200, response.data)

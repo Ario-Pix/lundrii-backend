@@ -56,12 +56,12 @@ class StudentAdmin(admin.ModelAdmin):
         "user",
         "institute",
         "home_hostel",
-        "floor",
         "gender",
         "email_verified_at",
         "suspension_ends",
         "is_active",
     )
+    exclude = ("floor",)
     list_filter = ("gender", "institute", "is_active")
     search_fields = ("name", "user__email", "phone")
     raw_id_fields = ("user", "institute", "home_hostel")

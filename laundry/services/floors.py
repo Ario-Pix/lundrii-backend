@@ -1,4 +1,8 @@
-"""Floor labels derived from machine locations (e.g. "3rd Floor · A Wing")."""
+"""Floor labels for sign-up / profile.
+
+Machine locations are often "3rd Floor · A Wing". Production hostels sometimes
+name machines "Washing Machine" / "Dryer Machine" instead — those are not floors.
+"""
 
 from __future__ import annotations
 
@@ -18,13 +22,53 @@ DEFAULT_FLOORS = (
 )
 
 _FLOOR_NUMBER = re.compile(r"(\d+)")
+_FLOOR_HEAD = re.compile(
+    r"(?ix)"
+    r"^\s*"
+    r"(?P<label>"
+    r"ground(?:\s+floor)?"
+    r"|gf"
+    r"|(?:\d+)(?:st|nd|rd|th)\s+floor"
+    r"|floor\s+\d+"
+    r")"
+    r"\b"
+)
 
 
-def floor_from_location(location_name: str) -> str:
+def _ordinal(n: int) -> str:
+    if 10 <= n % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
+def _canonical_floor(raw: str) -> str:
+    lowered = raw.lower().strip()
+    if lowered in ("ground", "ground floor", "gf"):
+        return "Ground Floor"
+    numbered = re.match(
+        r"(?:floor\s+)?(\d+)(?:st|nd|rd|th)?(?:\s+floor)?$",
+        lowered,
+    )
+    if numbered:
+        n = int(numbered.group(1))
+        if n == 0:
+            return "Ground Floor"
+        return f"{_ordinal(n)} Floor"
+    return raw.strip()
+
+
+def floor_from_location(location_name: str) -> str | None:
+    """Return a floor label, or None if the location is not a floor (e.g. a machine name)."""
     name = (location_name or "").strip()
-    if " · " in name:
-        return name.split(" · ", 1)[0].strip()
-    return name or DEFAULT_FLOORS[0]
+    if not name:
+        return None
+    head = name.split(" · ", 1)[0].strip()
+    match = _FLOOR_HEAD.match(head)
+    if not match:
+        return None
+    return _canonical_floor(match.group("label"))
 
 
 def _rank(label: str) -> tuple:

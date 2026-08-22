@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
 
@@ -17,8 +18,29 @@ if SECRET_KEY.strip() in _PLACEHOLDER_SECRET_KEYS:
         "SECRET_KEY must be a non-placeholder value when DEBUG is False."
     )
 
-# Production uses SQLite (backend/db.sqlite3) baked into the Docker image.
-# Do not set DATABASE_URL on Railway — leave unset so base.py keeps SQLite.
+# Production always uses SQLite — ignore DATABASE_URL even if Railway injects Postgres.
+_db_path = Path(os.getenv("LUNDRII_DB_PATH", str(BASE_DIR / "db.sqlite3")))
+if not _db_path.is_file():
+    raise ImproperlyConfigured(
+        f"db.sqlite3 not found at {_db_path}. Commit backend/db.sqlite3 and ensure "
+        "it is not excluded by .dockerignore."
+    )
+
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": _db_path,
+        "OPTIONS": {
+            "transaction_mode": "IMMEDIATE",
+            "timeout": 20,
+            "init_command": (
+                "PRAGMA journal_mode=WAL;"
+                "PRAGMA synchronous=NORMAL;"
+                "PRAGMA foreign_keys=ON;"
+            ),
+        },
+    }
+}
 
 ALLOWED_HOSTS = [
     "lundrii-backend-production.up.railway.app",
@@ -41,5 +63,6 @@ CSRF_TRUSTED_ORIGINS = build_csrf_trusted_origins(
 )
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
-SECURE_SSL_REDIRECT = not os.getenv("RAILWAY_ENVIRONMENT")
+# Railway terminates TLS at the edge; internal health probes use HTTP.
+SECURE_SSL_REDIRECT = False
 SIMPLE_JWT["SIGNING_KEY"] = SECRET_KEY

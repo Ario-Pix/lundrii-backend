@@ -153,7 +153,7 @@ def _upsert_student(
             "whatsapp_opt_in": bool(phone),
             "gender": gender,
             "home_hostel": boys1,
-            "floor": "3rd Floor",
+            "floor": "",
             "email_verified_at": timezone.now(),
             "is_active": True,
         },
@@ -165,7 +165,7 @@ def _upsert_student(
         student.whatsapp_opt_in = bool(phone)
         student.gender = gender
         student.home_hostel = boys1
-        student.floor = "3rd Floor"
+        student.floor = ""
         student.is_active = True
         if student.email_verified_at is None:
             student.email_verified_at = timezone.now()

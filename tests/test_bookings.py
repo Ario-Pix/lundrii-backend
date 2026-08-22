@@ -605,12 +605,15 @@ class GuestScheduleBrowseTests(FixtureMixin, TestCase):
         ids = {str(row["id"]) for row in self._rows(response.data)}
         self.assertIn(str(self.washer.id), ids)
         self.assertIn(str(self.dryer.id), ids)
+        self.assertNotIn(str(self.girl_washer.id), ids)
 
     def test_anonymous_can_browse_other_gender_hostel(self):
         response = self.client.get(f"/api/v1/hostels/{self.girls.id}/machines")
         self.assertEqual(response.status_code, 200)
         ids = {str(row["id"]) for row in self._rows(response.data)}
         self.assertIn(str(self.girl_washer.id), ids)
+        self.assertNotIn(str(self.washer.id), ids)
+        self.assertNotIn(str(self.dryer.id), ids)
 
     def test_anonymous_slots_match_occupancy_without_holder(self):
         on = timezone.localdate() + timedelta(days=1)
