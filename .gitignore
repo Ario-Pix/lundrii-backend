@@ -22,10 +22,10 @@ build/
 *.egg
 
 # Django
-db.sqlite3
-db.sqlite3-journal
-*.sqlite3
-.test_db.sqlite3
+# db.sqlite3
+# db.sqlite3-journal
+# *.sqlite3
+# .test_db.sqlite3
 media/
 staticfiles/
 local_settings.py
