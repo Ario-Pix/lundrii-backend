@@ -20,6 +20,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-dev-only-change-me")
 
 DEBUG = os.getenv("DEBUG", "True").lower() in ("1", "true", "yes")
+# Railway production must not serve debug tracebacks (DisallowedHost pages are ~70KB).
+if os.getenv("RAILWAY_ENVIRONMENT") == "production":
+    DEBUG = False
 
 _PLACEHOLDER_SECRET_KEYS = {
     "",
@@ -36,7 +39,14 @@ ALLOWED_HOSTS = [
     for h in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
     if h.strip()
 ]
-# Railway health checks hit /api/docs/ with Host: healthcheck.railway.app.
+# Railway injects RAILWAY_PUBLIC_DOMAIN (e.g. lundrii-backend-production.up.railway.app).
+_railway_public = os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip()
+if _railway_public and _railway_public not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(_railway_public)
+# Any *.up.railway.app service hostname when deployed on Railway.
+if os.getenv("RAILWAY_ENVIRONMENT") and ".up.railway.app" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(".up.railway.app")
+# Railway health checks hit /health/ with Host: healthcheck.railway.app.
 if "healthcheck.railway.app" not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append("healthcheck.railway.app")
 
@@ -275,6 +285,10 @@ CORS_ALLOW_HEADERS = (
 
 # Django CSRF checks Origin; reuse the student-app origins from CORS_ORIGINS.
 CSRF_TRUSTED_ORIGINS = list(CORS_ALLOWED_ORIGINS)
+if _railway_public:
+    _railway_origin = f"https://{_railway_public}"
+    if _railway_origin not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(_railway_origin)
 for _host in ALLOWED_HOSTS:
     if _host in ("*",) or _host.startswith("."):
         continue

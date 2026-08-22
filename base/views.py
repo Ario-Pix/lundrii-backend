@@ -1,3 +1,6 @@
-from django.shortcuts import render
+from django.http import JsonResponse
 
-# Create your views here.
+
+def health(_request):
+    """Lightweight probe for Railway — no DB, no auth."""
+    return JsonResponse({"status": "ok"})

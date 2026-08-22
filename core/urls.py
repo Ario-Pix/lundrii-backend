@@ -4,10 +4,12 @@ from django.contrib import admin
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+from base.views import health
 from mcp_server import oauth_views
 from mcp_server.views import McpEndpoint
 
 urlpatterns = [
+    path("health/", health, name="health"),
     # admin panel
     path("admin/", admin.site.urls),
     # Student / admin REST. MCP OAuth discovery and /mcp/ stay at the domain
