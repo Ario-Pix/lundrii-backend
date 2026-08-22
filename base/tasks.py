@@ -2,7 +2,7 @@
 Background Tasks built on Django's own Tasks framework (``django.tasks``).
 
 No Celery, no broker, no worker process. The backend is configured by the
-``TASKS`` setting in ``core.settings``; by default it is
+``TASKS`` setting in ``core.settings.base``; by default it is
 ``ImmediateBackend``, which runs an enqueued Task inline.
 
 Why bother wrapping these in Tasks at all:

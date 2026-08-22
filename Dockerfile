@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    DJANGO_SETTINGS_MODULE=core.settings
+    DJANGO_SETTINGS_MODULE=core.settings.prod
 
 WORKDIR /app
 
@@ -15,7 +15,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 RUN chmod +x start.sh \
-    && python manage.py collectstatic --noinput
+    && SECRET_KEY=build-only-collectstatic-not-for-production \
+    python manage.py collectstatic --noinput
 
 EXPOSE 8000
 

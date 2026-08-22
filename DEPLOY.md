@@ -7,11 +7,13 @@ Set the Railway service **root directory** to `backend` so `Dockerfile` and `rai
 1. Docker image: Python 3.12-slim, `pip install -r requirements.txt`.
 2. Container `CMD` is `./start.sh`:
    - `python manage.py migrate --noinput`
-   - `python manage.py collectstatic --noinput`
+   - `python manage.py check --deploy`
    - `gunicorn core.wsgi:application --bind 0.0.0.0:$PORT`
-3. Railway injects `PORT`. Workers: `WEB_CONCURRENCY` (default `2`).
+3. `collectstatic` runs at **image build** time (see `Dockerfile`). Railway injects `PORT`. Workers: `WEB_CONCURRENCY` (default `2`).
 
-Health check: `GET /api/docs/` (Swagger UI, unauthenticated).
+Health check: `GET /health/` (see `railway.toml`).
+
+If the public URL returns **502 Application failed to respond**, the container never started gunicorn — check Railway deploy logs. The most common cause is a placeholder `SECRET_KEY` while using `core.settings.prod` (`DEBUG=False`).
 
 ## Postgres
 
@@ -26,10 +28,6 @@ Do not put real secrets in this file. Generate `SECRET_KEY` yourself and paste i
 | Variable | Production |
 |---|---|
 | `SECRET_KEY` | Required. Must not be a placeholder (`change-me-…` / Django insecure default). |
-| `DEBUG` | `False` |
-| `ALLOWED_HOSTS` | Railway hostname, e.g. `lundrii-api.up.railway.app` (comma-separated if more). |
-| `CORS_ORIGINS` | Production student app origin(s), e.g. `https://your-app.vercel.app`. Also used for `CSRF_TRUSTED_ORIGINS`. Include every Vercel origin that calls the API. Preview URLs need extra entries or skip previews. |
-| `FRONTEND_URL` | Production student app URL (no trailing slash). Email verify/reset links use this. |
 | `DATABASE_URL` | Railway Postgres URL. |
 | `CACHE_BACKEND` | `db` |
 | `RESEND_API_KEY` | Resend API key. |
@@ -40,8 +38,10 @@ Do not put real secrets in this file. Generate `SECRET_KEY` yourself and paste i
 | `CLOUDINARY_FOLDER` | Optional; default `lundrii`. |
 | `CLOUDINARY_URL` | Optional instead of the three Cloudinary vars. |
 
-Optional: `WEB_CONCURRENCY`, `TASKS_BACKEND`, JWT/OTP tunables (see `.env.example`). CSRF is derived from `CORS_ORIGINS` plus `https://` + each `ALLOWED_HOSTS` entry when `DEBUG=False`.
+Optional: `WEB_CONCURRENCY`, `TASKS_BACKEND`, JWT/OTP tunables (see `.env.example`).
+
+`ALLOWED_HOSTS`, CORS origins, and `FRONTEND_URL` are hardcoded in `core/settings/prod.py` — edit that file and redeploy to change them, not Railway env vars. Any `https://*.vercel.app` origin is already allowed for CORS via regex in `core/settings/base.py`. CSRF trusted origins are derived from the hardcoded lists in prod settings.
 
 ## Proxy / TLS
 
-Railway terminates HTTPS. Settings already set `SECURE_PROXY_SSL_HEADER`, `USE_X_FORWARDED_HOST`, and (when `DEBUG=False`) `SECURE_SSL_REDIRECT`, `SESSION_COOKIE_SECURE`, and `CSRF_COOKIE_SECURE`.
+Railway terminates HTTPS. Settings already set `SECURE_PROXY_SSL_HEADER`, `USE_X_FORWARDED_HOST`, and (in `core/settings/prod.py`) `SECURE_SSL_REDIRECT`, `SESSION_COOKIE_SECURE`, and `CSRF_COOKIE_SECURE`.

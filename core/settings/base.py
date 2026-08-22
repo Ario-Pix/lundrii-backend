@@ -1,5 +1,7 @@
 """
-Django settings for Lundrii backend (core).
+Shared Django settings for Lundrii backend (core).
+
+Environment-specific overrides live in dev.py and prod.py.
 """
 
 import os
@@ -9,46 +11,10 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from corsheaders.defaults import default_headers
 from django.core.exceptions import ImproperlyConfigured
-from dotenv import load_dotenv
 
 from base.apidocs import API_DESCRIPTION
 
-load_dotenv()
-
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-dev-only-change-me")
-
-DEBUG = os.getenv("DEBUG", "True").lower() in ("1", "true", "yes")
-# Railway production must not serve debug tracebacks (DisallowedHost pages are ~70KB).
-if os.getenv("RAILWAY_ENVIRONMENT") == "production":
-    DEBUG = False
-
-_PLACEHOLDER_SECRET_KEYS = {
-    "",
-    "django-insecure-dev-only-change-me",
-    "change-me-to-a-long-random-string",
-}
-if not DEBUG and SECRET_KEY.strip() in _PLACEHOLDER_SECRET_KEYS:
-    raise ImproperlyConfigured(
-        "SECRET_KEY must be a non-placeholder value when DEBUG is False."
-    )
-
-ALLOWED_HOSTS = [
-    h.strip()
-    for h in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
-    if h.strip()
-]
-# Railway injects RAILWAY_PUBLIC_DOMAIN (e.g. lundrii-backend-production.up.railway.app).
-_railway_public = os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip()
-if _railway_public and _railway_public not in ALLOWED_HOSTS:
-    ALLOWED_HOSTS.append(_railway_public)
-# Any *.up.railway.app service hostname when deployed on Railway.
-if os.getenv("RAILWAY_ENVIRONMENT") and ".up.railway.app" not in ALLOWED_HOSTS:
-    ALLOWED_HOSTS.append(".up.railway.app")
-# Railway health checks hit /health/ with Host: healthcheck.railway.app.
-if "healthcheck.railway.app" not in ALLOWED_HOSTS:
-    ALLOWED_HOSTS.append("healthcheck.railway.app")
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -219,26 +185,26 @@ TEST_RUNNER = "core.test_runner.LundriiTestRunner"
 # ---------------------------------------------------------------------------
 CACHE_TABLE_NAME = "lundrii_cache"
 
-CACHE_BACKEND = os.getenv("CACHE_BACKEND", "locmem" if DEBUG else "db").strip().lower()
 
-if CACHE_BACKEND == "db":
-    CACHES = {
-        "default": {
-            "BACKEND": "django.core.cache.backends.db.DatabaseCache",
-            "LOCATION": CACHE_TABLE_NAME,
-            # Auth entries are small; keep plenty of headroom before culling.
-            "OPTIONS": {"MAX_ENTRIES": 10000, "CULL_FREQUENCY": 3},
+def build_caches(backend: str) -> dict:
+    backend = backend.strip().lower()
+    if backend == "db":
+        return {
+            "default": {
+                "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+                "LOCATION": CACHE_TABLE_NAME,
+                "OPTIONS": {"MAX_ENTRIES": 10000, "CULL_FREQUENCY": 3},
+            }
         }
-    }
-elif CACHE_BACKEND == "dummy":
-    CACHES = {"default": {"BACKEND": "django.core.cache.backends.dummy.DummyCache"}}
-else:
-    CACHES = {
+    if backend == "dummy":
+        return {"default": {"BACKEND": "django.core.cache.backends.dummy.DummyCache"}}
+    return {
         "default": {
             "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
             "LOCATION": "lundrii-local",
         }
     }
+
 
 # ---------------------------------------------------------------------------
 # Background tasks — Django's built-in Tasks framework (django.tasks), no Celery.
@@ -261,15 +227,6 @@ TASKS = {
 # ---------------------------------------------------------------------------
 # CORS
 # ---------------------------------------------------------------------------
-CORS_ALLOWED_ORIGINS = [
-    o.strip()
-    for o in os.getenv(
-        "CORS_ORIGINS",
-        "http://localhost:3000,http://127.0.0.1:3000",
-    ).split(",")
-    if o.strip()
-]
-
 # Vercel production + preview URLs (project.vercel.app, *-git-*-team.vercel.app, …).
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^https://[\w.-]+\.vercel\.app$",
@@ -283,27 +240,36 @@ CORS_ALLOW_HEADERS = (
     "x-client-platform",
 )
 
-# Django CSRF checks Origin; reuse the student-app origins from CORS_ORIGINS.
-CSRF_TRUSTED_ORIGINS = list(CORS_ALLOWED_ORIGINS)
-if _railway_public:
-    _railway_origin = f"https://{_railway_public}"
-    if _railway_origin not in CSRF_TRUSTED_ORIGINS:
-        CSRF_TRUSTED_ORIGINS.append(_railway_origin)
-for _host in ALLOWED_HOSTS:
-    if _host in ("*",) or _host.startswith("."):
-        continue
-    _origin = f"{'http' if DEBUG else 'https'}://{_host}"
-    if _origin not in CSRF_TRUSTED_ORIGINS:
-        CSRF_TRUSTED_ORIGINS.append(_origin)
+
+def build_csrf_trusted_origins(
+    *,
+    cors_origins: list[str],
+    frontend_url: str,
+    allowed_hosts: list[str],
+    use_https: bool,
+    extra_origins: list[str] | None = None,
+) -> list[str]:
+    origins = list(cors_origins)
+    frontend = frontend_url.strip().rstrip("/")
+    if frontend and frontend not in origins:
+        origins.append(frontend)
+    if extra_origins:
+        for origin in extra_origins:
+            if origin and origin not in origins:
+                origins.append(origin)
+    scheme = "https" if use_https else "http"
+    for host in allowed_hosts:
+        if host in ("*",) or host.startswith("."):
+            continue
+        origin = f"{scheme}://{host}"
+        if origin not in origins:
+            origins.append(origin)
+    return origins
+
 
 # Railway (and similar) terminate TLS at the proxy.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 USE_X_FORWARDED_HOST = True
-if not DEBUG:
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
-    # Internal Railway health probes use HTTP — SECURE_SSL_REDIRECT returns 301 and fails checks.
-    SECURE_SSL_REDIRECT = not os.getenv("RAILWAY_ENVIRONMENT")
 
 # ---------------------------------------------------------------------------
 # DRF
@@ -332,7 +298,6 @@ SIMPLE_JWT = {
     "BLACKLIST_AFTER_ROTATION": False,
     "UPDATE_LAST_LOGIN": False,
     "ALGORITHM": "HS256",
-    "SIGNING_KEY": SECRET_KEY,
     "AUTH_HEADER_TYPES": ("Bearer",),
     "AUTH_HEADER_NAME": "HTTP_AUTHORIZATION",
     "USER_ID_FIELD": "id",
@@ -388,7 +353,6 @@ RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
 _email_from = os.getenv("EMAIL_FROM", "").strip() or os.getenv("RESEND_FROM_EMAIL", "").strip()
 EMAIL_FROM = _email_from or "Lundrii <noreply@lundrii.app>"
 RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "").strip()
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
 # Public origin of this API as ChatGPT/Claude will call it (scheme + host, no
 # trailing slash). When set, Profile's mcpUrl uses it instead of the request
 # host — needed behind a proxy whose Host header is not the public URL.

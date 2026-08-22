@@ -28,6 +28,7 @@ from laundry.models import Hostel, Institute, Student
 
 # Routes that are meant to be reachable without a token.
 PUBLIC_PREFIXES = (
+    "/health/",
     "/api/v1/auth/",
     # Guest Book browse — occupancy only; booking POST stays private.
     "/api/v1/hostels/",
