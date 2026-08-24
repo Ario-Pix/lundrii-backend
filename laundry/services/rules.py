@@ -207,6 +207,9 @@ def quota_status(
     washer — plus dryer when dryer-cap is on). Bookings in other weeks are
     excluded; upcoming starts later this week still consume this week's quota.
     ``resets_at`` is always next Monday 00:00.
+
+    ``dryer_used`` is a separate display count of active dryer bookings this week
+    (independent of whether dryers consume washer quota).
     """
     now = _aware(now or timezone.now())
     rules = rules or get_institute_rules(student.institute)
@@ -216,9 +219,20 @@ def quota_status(
     kinds = _profile_quota_kinds(rules)
     starts = _quota_counting_starts(student, kinds)
     used = len(_starts_in_week(starts, week_start, week_end))
+    dryer_starts = list(
+        Booking.objects.filter(
+            student=student,
+            is_active=True,
+            cancelled_at__isnull=True,
+            machine__kind=MachineKind.DRYER,
+            starts_at__gte=week_start,
+            starts_at__lt=week_end,
+        ).values_list("starts_at", flat=True)
+    )
     return {
         "used": used,
         "limit": limit,
+        "dryer_used": len(dryer_starts),
         "window_days": window_days,
         "resets_at": week_end,
     }
@@ -235,42 +249,23 @@ def cooldown_clears_at(
 
 
 def student_gender(student: Student) -> str:
-    """Gender used for hostel eligibility and booking.
-
-    Signup copies the hostel designation onto the student. Some accounts have
-    ``home_hostel`` with a blank ``gender`` column (profile PATCH used to skip
-    it). Until an admin assigns otherwise, the home hostel's designation is
-    the student's gender.
-    """
-    if student.gender:
-        return student.gender
-    hostel = student.home_hostel
-    if hostel is not None and hostel.gender:
-        return hostel.gender
-    return ""
+    """Admin-assigned demographic gender, or blank until set."""
+    return student.gender or ""
 
 
 def visible_hostels(student: Student):
-    gender = student_gender(student)
-    if not gender:
-        return student.institute.hostels.none()
-    return student.institute.hostels.filter(
-        is_active=True,
-        gender=gender,
-    )
+    """Active hostels in the student's institute (any hostel is eligible)."""
+    return student.institute.hostels.filter(is_active=True)
 
 
 def machine_is_visible(student: Student, machine: Machine) -> bool:
     """Whether a student may list slots or book on this machine.
 
-    Eligibility is institute + same gender — not limited to ``home_hostel``.
+    Eligibility is institute-scoped — not limited to ``home_hostel``.
     Students may book in any active hostel returned by ``visible_hostels``.
     """
     if not machine.is_active or not machine.hostel.is_active:
         return False
     if machine.hostel.institute_id != student.institute_id:
-        return False
-    gender = student_gender(student)
-    if not gender or machine.hostel.gender != gender:
         return False
     return True

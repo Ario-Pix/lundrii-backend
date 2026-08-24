@@ -172,7 +172,6 @@ class HostelSerializer(serializers.ModelSerializer):
             "institute",
             "institute_name",
             "name",
-            "gender",
             "is_active",
             "created_at",
             "updated_at",
@@ -397,10 +396,6 @@ class StudentCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 {"home_hostel": "Hostel is outside your institute."}
             )
-        if attrs["gender"] != hostel.gender:
-            raise serializers.ValidationError(
-                "Student gender must match the hostel gender designation."
-            )
 
         domain = email_domain(attrs["email"])
         if domain not in domains_of(institute):
@@ -477,15 +472,6 @@ class StudentAssignSerializer(serializers.Serializer):
         if scoped is not None and hostel.institute_id != scoped:
             raise serializers.ValidationError("Hostel is outside your institute.")
         return hostel
-
-    def validate(self, attrs):
-        hostel = attrs["home_hostel"]
-        gender = attrs["gender"]
-        if hostel.gender != gender:
-            raise serializers.ValidationError(
-                "Student gender must match the hostel gender designation."
-            )
-        return attrs
 
     def save(self, **kwargs):
         student = self.instance

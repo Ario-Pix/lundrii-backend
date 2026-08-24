@@ -7,6 +7,10 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
+from laundry.data.gim_inventory import (
+    GIM_HOSTEL_NAMES,
+    expected_machines_by_hostel,
+)
 from laundry.models import (
     Administrator,
     Gender,
@@ -34,33 +38,12 @@ ADMIN_PASSWORD = "LundriiAdmin!1"
 ADMIN_NAME = "GIM Laundry Committee"
 
 STUDENT_PASSWORD = "LundriiStudent!1"
+DEFAULT_PILOT_HOSTEL = "Hostel 1"
 
 PILOT_STUDENTS = (
     ("aarav.mehta@gim.ac.in", "Aarav Mehta", "+91 98220 41127", Gender.MALE),
     ("rohan.shetty@gim.ac.in", "Rohan Shetty", "", Gender.MALE),
     ("diya.nair@gim.ac.in", "Diya Nair", "", Gender.FEMALE),
-)
-
-HOSTELS = (
-    ("Boys Hostel 1", Gender.MALE),
-    ("Boys Hostel 2", Gender.MALE),
-    ("PG Block", Gender.MALE),
-)
-
-# Flutter mock machines live on Boys Hostel 1.
-BH1_MACHINES = (
-    (MachineKind.WASHER, "3rd Floor · A Wing", False),
-    (MachineKind.WASHER, "2nd Floor · A Wing", False),
-    (MachineKind.WASHER, "2nd Floor · C Wing", False),
-    (MachineKind.WASHER, "Ground Floor · B Wing", False),
-    (MachineKind.WASHER, "4th Floor · B Wing", True),
-    (MachineKind.DRYER, "Ground Floor · B Wing", False),
-    (MachineKind.DRYER, "2nd Floor · C Wing", False),
-)
-
-OTHER_HOSTEL_MACHINES = (
-    (MachineKind.WASHER, "Ground Floor", False),
-    (MachineKind.DRYER, "Ground Floor", False),
 )
 
 
@@ -82,21 +65,15 @@ def _upsert_user(email: str, password: str, *, is_staff: bool, is_superuser: boo
     return user
 
 
-def _upsert_hostel(institute: Institute, name: str, gender: str) -> Hostel:
+def _upsert_hostel(institute: Institute, name: str) -> Hostel:
     hostel, _ = Hostel.objects.get_or_create(
         institute=institute,
         name=name,
-        defaults={"gender": gender, "is_active": True},
+        defaults={"is_active": True},
     )
-    changed = False
-    if hostel.gender != gender:
-        hostel.gender = gender
-        changed = True
     if not hostel.is_active:
         hostel.is_active = True
-        changed = True
-    if changed:
-        hostel.save(update_fields=["gender", "is_active", "updated_at"])
+        hostel.save(update_fields=["is_active", "updated_at"])
     return hostel
 
 
@@ -133,9 +110,36 @@ def _upsert_machine(hostel: Hostel, kind: str, location_name: str, *, is_offline
     return machine
 
 
+def _deactivate_legacy_inventory(institute: Institute, fallback_hostel: Hostel) -> None:
+    canonical = set(GIM_HOSTEL_NAMES)
+    legacy_hostels = Hostel.objects.filter(institute=institute).exclude(name__in=canonical)
+    legacy_ids = list(legacy_hostels.values_list("id", flat=True))
+    if legacy_ids:
+        Machine.objects.filter(hostel_id__in=legacy_ids, is_active=True).update(is_active=False)
+        legacy_hostels.update(is_active=False)
+        Student.objects.filter(
+            institute=institute,
+            home_hostel_id__in=legacy_ids,
+        ).update(home_hostel=fallback_hostel)
+
+
+def _sync_hostel_machines(hostel: Hostel, expected: list[tuple[str, str]]) -> None:
+    keep: set[tuple[str, str]] = set()
+    for kind, location_name in expected:
+        _upsert_machine(hostel, kind, location_name, is_offline=False)
+        keep.add((kind, location_name))
+
+    stale = Machine.objects.filter(hostel=hostel, is_active=True)
+    for machine in stale:
+        key = (machine.kind, machine.location_name)
+        if key not in keep:
+            machine.is_active = False
+            machine.save(update_fields=["is_active", "updated_at"])
+
+
 def _upsert_student(
     institute: Institute,
-    boys1: Hostel,
+    home_hostel: Hostel,
     *,
     email: str,
     password: str,
@@ -152,7 +156,7 @@ def _upsert_student(
             "phone": phone,
             "whatsapp_opt_in": bool(phone),
             "gender": gender,
-            "home_hostel": boys1,
+            "home_hostel": home_hostel,
             "floor": "",
             "email_verified_at": timezone.now(),
             "is_active": True,
@@ -164,7 +168,7 @@ def _upsert_student(
         student.phone = phone
         student.whatsapp_opt_in = bool(phone)
         student.gender = gender
-        student.home_hostel = boys1
+        student.home_hostel = home_hostel
         student.floor = ""
         student.is_active = True
         if student.email_verified_at is None:
@@ -200,16 +204,14 @@ class Command(BaseCommand):
             },
         )
 
-        hostels = {
-            name: _upsert_hostel(institute, name, gender) for name, gender in HOSTELS
-        }
-        boys1 = hostels["Boys Hostel 1"]
+        inventory = expected_machines_by_hostel()
+        hostels = {name: _upsert_hostel(institute, name) for name in GIM_HOSTEL_NAMES}
+        pilot_hostel = hostels[DEFAULT_PILOT_HOSTEL]
 
-        for kind, location, offline in BH1_MACHINES:
-            _upsert_machine(boys1, kind, location, is_offline=offline)
-        for name in ("Boys Hostel 2", "PG Block"):
-            for kind, location, offline in OTHER_HOSTEL_MACHINES:
-                _upsert_machine(hostels[name], kind, location, is_offline=offline)
+        _deactivate_legacy_inventory(institute, pilot_hostel)
+
+        for name, machines in inventory.items():
+            _sync_hostel_machines(hostels[name], machines)
 
         super_user = _upsert_user(
             SUPER_EMAIL, SUPER_PASSWORD, is_staff=True, is_superuser=True
@@ -234,7 +236,7 @@ class Command(BaseCommand):
         for email, name, phone, gender in PILOT_STUDENTS:
             _upsert_student(
                 institute,
-                boys1,
+                pilot_hostel,
                 email=email,
                 password=STUDENT_PASSWORD,
                 name=name,
@@ -242,8 +244,14 @@ class Command(BaseCommand):
                 gender=gender,
             )
 
-        washer_count = Machine.objects.filter(hostel__institute=institute, kind=MachineKind.WASHER).count()
-        dryer_count = Machine.objects.filter(hostel__institute=institute, kind=MachineKind.DRYER).count()
+        active_machines = Machine.objects.filter(
+            hostel__institute=institute,
+            hostel__is_active=True,
+            is_active=True,
+        )
+        washer_count = active_machines.filter(kind=MachineKind.WASHER).count()
+        dryer_count = active_machines.filter(kind=MachineKind.DRYER).count()
+        hostel_count = Hostel.objects.filter(institute=institute, is_active=True).count()
 
         self.stdout.write(self.style.SUCCESS("Pilot seed complete (safe to re-run)."))
         self.stdout.write("")
@@ -252,10 +260,10 @@ class Command(BaseCommand):
         self.stdout.write(
             "Rules:      quota 3/7d · advance 7d · cancel cutoff 6h · dryer_cap off"
         )
+        self.stdout.write(f"Hostels:    {hostel_count} active ({', '.join(GIM_HOSTEL_NAMES)})")
         self.stdout.write(
-            f"Hostels:    {', '.join(name for name, _ in HOSTELS)} (all male)"
+            f"Machines:   {washer_count} washers, {dryer_count} dryers ({washer_count + dryer_count} total)"
         )
-        self.stdout.write(f"Machines:   {washer_count} washers, {dryer_count} dryers (BH1 matches Flutter names; 4th Floor · B Wing offline)")
         self.stdout.write("")
         self.stdout.write(self.style.NOTICE("Django admin  →  http://127.0.0.1:8000/admin/"))
         self.stdout.write(f"  SuperAdministrator  {SUPER_EMAIL}   /  {SUPER_PASSWORD}")
@@ -266,7 +274,9 @@ class Command(BaseCommand):
             f"  POST /api/v1/auth/login   {{\"email\": \"<student>\", \"password\": \"{STUDENT_PASSWORD}\"}}"
         )
         self.stdout.write("")
-        self.stdout.write(self.style.NOTICE("Pilot students (Boys Hostel 1, verified):"))
+        self.stdout.write(
+            self.style.NOTICE(f"Pilot students ({DEFAULT_PILOT_HOSTEL}, verified):")
+        )
         for email, name, _phone, _gender in PILOT_STUDENTS:
             self.stdout.write(f"  {name:<16}  {email}  /  {STUDENT_PASSWORD}")
         self.stdout.write("  Docs:  /api/docs/    Schema:  /api/schema/")

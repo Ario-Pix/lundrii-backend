@@ -52,7 +52,7 @@ class ExchangeFixtureMixin:
         defaults.update(rule_kwargs)
         self.rules = InstituteRule.objects.create(institute=self.institute, **defaults)
         self.boys = Hostel.objects.create(
-            institute=self.institute, name="Boys 1", gender=Gender.MALE
+            institute=self.institute, name="Boys 1"
         )
         self.washer = Machine.objects.create(
             hostel=self.boys,

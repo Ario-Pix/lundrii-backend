@@ -65,10 +65,10 @@ class FixtureMixin:
         defaults.update(rule_kwargs)
         self.rules = InstituteRule.objects.create(institute=self.institute, **defaults)
         self.boys = Hostel.objects.create(
-            institute=self.institute, name="Boys 1", gender=Gender.MALE
+            institute=self.institute, name="Boys 1"
         )
         self.girls = Hostel.objects.create(
-            institute=self.institute, name="Girls 1", gender=Gender.FEMALE
+            institute=self.institute, name="Girls 1"
         )
         self.washer = Machine.objects.create(
             hostel=self.boys,
@@ -378,14 +378,19 @@ class StudentAPITests(FixtureMixin, TestCase):
         token = RefreshToken.for_user(self.student.user)
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
 
-    def test_gender_hides_other_hostel(self):
-        url = f"/api/v1/hostels/{self.girls.id}/machines"
+    def test_other_institute_hostel_hidden(self):
+        other = Institute.objects.create(
+            name="Other Campus",
+            allowed_email_domains=["other.edu"],
+        )
+        other_hostel = Hostel.objects.create(institute=other, name="Other H")
+        url = f"/api/v1/hostels/{other_hostel.id}/machines"
         response = self.client.get(url)
         self.assertEqual(response.status_code, 404)
 
     def test_non_home_eligible_hostel_machines_and_booking(self):
         boys_two = Hostel.objects.create(
-            institute=self.institute, name="Boys 2", gender=Gender.MALE
+            institute=self.institute, name="Boys 2"
         )
         washer_two = Machine.objects.create(
             hostel=boys_two,
@@ -521,11 +526,11 @@ class StudentAPITests(FixtureMixin, TestCase):
         self.assertEqual(hostels.status_code, 200, hostels.data)
         names = {row["name"] for row in hostels.data}
         self.assertIn("Boys 1", names)
-        self.assertNotIn("Girls 1", names)
+        self.assertIn("Girls 1", names)
 
         me = client.get("/api/v1/me")
         self.assertEqual(me.status_code, 200, me.data)
-        self.assertEqual(me.data["gender"], Gender.MALE)
+        self.assertIsNone(me.data["gender"])
 
         start = (timezone.localtime() + timedelta(hours=8)).replace(
             minute=0, second=0, microsecond=0
@@ -549,7 +554,7 @@ class StudentAPITests(FixtureMixin, TestCase):
         )
         self.assertEqual(len(rows), 1)
 
-    def test_blank_gender_without_hostel_cannot_book(self):
+    def test_blank_gender_without_hostel_can_still_book(self):
         user = User.objects.create_user(email="nohostel@gim.ac.in", password="unused")
         Student.objects.create(
             user=user,
@@ -575,8 +580,7 @@ class StudentAPITests(FixtureMixin, TestCase):
         )
         self.assertEqual(booked.status_code, 200, booked.data)
         item = booked.data["results"][0]
-        self.assertFalse(item["ok"], booked.data)
-        self.assertIn("hostel", item["detail"].lower())
+        self.assertTrue(item["ok"], booked.data)
 
 
 class GuestScheduleBrowseTests(FixtureMixin, TestCase):
@@ -607,7 +611,7 @@ class GuestScheduleBrowseTests(FixtureMixin, TestCase):
         self.assertIn(str(self.dryer.id), ids)
         self.assertNotIn(str(self.girl_washer.id), ids)
 
-    def test_anonymous_can_browse_other_gender_hostel(self):
+    def test_anonymous_can_browse_any_hostel(self):
         response = self.client.get(f"/api/v1/hostels/{self.girls.id}/machines")
         self.assertEqual(response.status_code, 200)
         ids = {str(row["id"]) for row in self._rows(response.data)}

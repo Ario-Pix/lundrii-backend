@@ -134,7 +134,6 @@ class Hostel(BaseModel):
         related_name="hostels",
     )
     name = models.CharField(max_length=200)
-    gender = models.CharField(max_length=16, choices=Gender.choices)
 
     class Meta:
         ordering = ("institute", "name")

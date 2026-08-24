@@ -43,10 +43,10 @@ class InstituteRuleAdmin(admin.ModelAdmin):
 
 @admin.register(Hostel)
 class HostelAdmin(admin.ModelAdmin):
-    list_display = ("name", "institute", "gender", "is_active")
-    list_filter = ("gender", "institute", "is_active")
+    list_display = ("name", "institute", "is_active")
+    list_filter = ("institute", "is_active")
     search_fields = ("name",)
-    raw_id_fields = ("institute",)
+    autocomplete_fields = ("institute",)
 
 
 @admin.register(Student)

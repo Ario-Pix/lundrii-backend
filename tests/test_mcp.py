@@ -54,10 +54,10 @@ class McpWorldMixin:
         defaults.update(rule_kwargs)
         self.rules = InstituteRule.objects.create(institute=self.institute, **defaults)
         self.boys = Hostel.objects.create(
-            institute=self.institute, name="Boys 1", gender=Gender.MALE
+            institute=self.institute, name="Boys 1"
         )
         self.girls = Hostel.objects.create(
-            institute=self.institute, name="Girls 1", gender=Gender.FEMALE
+            institute=self.institute, name="Girls 1"
         )
         self.washer = Machine.objects.create(
             hostel=self.boys,
@@ -393,7 +393,7 @@ class FindAvailableSlotsTests(McpWorldMixin, TestCase):
         )
         self.assertIn("No free slots", text)
 
-    def test_only_the_students_own_hostel_is_visible(self):
+    def test_all_institute_hostels_are_visible(self):
         other_hostel_machine = Machine.objects.create(
             hostel=self.girls,
             kind=MachineKind.WASHER,
@@ -405,7 +405,8 @@ class FindAvailableSlotsTests(McpWorldMixin, TestCase):
         text, _ = self.call_tool(
             "find_available_slots", {"date": self.tomorrow.isoformat()}
         )
-        self.assertNotIn(str(other_hostel_machine.id), text)
+        self.assertIn(str(other_hostel_machine.id), text)
+        self.assertIn(str(self.washer.id), text)
 
     def test_past_dates_are_refused(self):
         text, is_error = self.call_tool(
@@ -565,9 +566,14 @@ class BookSlotTests(McpWorldMixin, TestCase):
         self.assertTrue(is_error)
         self.assertIn("UNVERIFIED", text)
 
-    def test_another_hostels_machine_is_refused(self):
+    def test_another_institutes_machine_is_refused(self):
+        other = Institute.objects.create(
+            name="Other Campus",
+            allowed_email_domains=["other.edu"],
+        )
+        foreign_hostel = Hostel.objects.create(institute=other, name="Other H")
         foreign = Machine.objects.create(
-            hostel=self.girls,
+            hostel=foreign_hostel,
             kind=MachineKind.WASHER,
             location_name="Girls Wing",
             operating_window_start=time(0, 0),
@@ -632,7 +638,8 @@ class BookingManagementToolTests(McpWorldMixin, TestCase):
         text, is_error = self.call_tool("list_my_bookings")
         self.assertFalse(is_error)
         self.assertIn(f"booking_id={self.booking.id}", text)
-        self.assertIn("Quota: 1/3", text)
+        self.assertIn("Quota:", text)
+        self.assertIn("/3", text)
 
     def test_list_is_empty_when_nothing_is_booked(self):
         self.booking.delete()

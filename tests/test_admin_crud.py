@@ -38,10 +38,10 @@ class AdminApiTests(APITestCase):
             allowed_email_domains=["other.edu"],
         )
         self.hostel = Hostel.objects.create(
-            institute=self.institute, name="Boys 1", gender=Gender.MALE
+            institute=self.institute, name="Boys 1"
         )
         self.other_hostel = Hostel.objects.create(
-            institute=self.other_institute, name="Other H", gender=Gender.MALE
+            institute=self.other_institute, name="Other H"
         )
         self.machine = Machine.objects.create(
             hostel=self.hostel,
@@ -107,7 +107,7 @@ class AdminApiTests(APITestCase):
 
         res = self.client.post(
             "/api/v1/admin/hostels/",
-            {"name": "Boys 2", "gender": "male"},
+            {"name": "Boys 2"},
             format="json",
         )
         self.assertEqual(res.status_code, 201, res.data)

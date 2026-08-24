@@ -33,10 +33,10 @@ class AdminBookingsAnalyticsTests(APITestCase):
             allowed_email_domains=["other.edu"],
         )
         self.hostel = Hostel.objects.create(
-            institute=self.institute, name="Boys 1", gender=Gender.MALE
+            institute=self.institute, name="Boys 1"
         )
         self.other_hostel = Hostel.objects.create(
-            institute=self.other_institute, name="Other H", gender=Gender.MALE
+            institute=self.other_institute, name="Other H"
         )
         self.machine = Machine.objects.create(
             hostel=self.hostel,

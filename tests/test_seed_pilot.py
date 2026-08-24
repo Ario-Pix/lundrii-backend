@@ -39,17 +39,52 @@ class SeedPilotCommandTests(TestCase):
         self.assertEqual(rules.cancellation_cutoff_hours, 6)
         self.assertFalse(rules.dryer_cap_enabled)
 
-        self.assertEqual(Hostel.objects.filter(institute=institute).count(), 3)
-        boys1 = Hostel.objects.get(institute=institute, name="Boys Hostel 1")
-        self.assertEqual(boys1.gender, Gender.MALE)
+        self.assertEqual(
+            Hostel.objects.filter(institute=institute, is_active=True).count(), 11
+        )
+        hostel1 = Hostel.objects.get(institute=institute, name="Hostel 1", is_active=True)
+        hostel9d = Hostel.objects.get(institute=institute, name="Hostel 9D", is_active=True)
+        hostel10 = Hostel.objects.get(institute=institute, name="Hostel 10", is_active=True)
+
+        active = Machine.objects.filter(
+            hostel__institute=institute,
+            hostel__is_active=True,
+            is_active=True,
+        )
+        self.assertEqual(active.filter(kind=MachineKind.WASHER).count(), 24)
+        self.assertEqual(active.filter(kind=MachineKind.DRYER).count(), 24)
+        self.assertEqual(active.count(), 48)
 
         self.assertEqual(
-            Machine.objects.filter(hostel=boys1, kind=MachineKind.WASHER).count(), 5
+            active.filter(hostel=hostel9d).count(),
+            7,
         )
-        offline = Machine.objects.get(
-            hostel=boys1, kind=MachineKind.WASHER, location_name="4th Floor · B Wing"
+        self.assertEqual(
+            active.filter(hostel=hostel10).count(),
+            8,
         )
-        self.assertTrue(offline.is_offline)
+        self.assertTrue(
+            active.filter(
+                hostel=hostel1,
+                kind=MachineKind.WASHER,
+                location_name="Ground Floor · Washer",
+            ).exists()
+        )
+        self.assertTrue(
+            active.filter(
+                hostel=hostel1,
+                kind=MachineKind.WASHER,
+                location_name="Ground Floor · Washer 2",
+            ).exists()
+        )
+
+        self.assertFalse(
+            Hostel.objects.filter(
+                institute=institute,
+                name="Boys Hostel 1",
+                is_active=True,
+            ).exists()
+        )
 
         self.assertTrue(
             SuperAdministrator.objects.filter(user__email="super@lundrii.local").exists()
@@ -61,7 +96,7 @@ class SeedPilotCommandTests(TestCase):
         )
         student = Student.objects.get(user__email="aarav.mehta@gim.ac.in")
         self.assertIsNotNone(student.email_verified_at)
-        self.assertEqual(student.home_hostel_id, boys1.id)
+        self.assertEqual(student.home_hostel_id, hostel1.id)
         self.assertEqual(student.gender, Gender.MALE)
         self.assertTrue(student.user.check_password("LundriiStudent!1"))
 

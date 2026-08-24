@@ -154,7 +154,7 @@ class AuthAPITests(APITestCase):
             allowed_email_domains=["gim.ac.in", "@student.gim.ac.in"],
         )
         self.hostel = Hostel.objects.create(
-            institute=self.institute, name="Boys Hostel 1", gender=Gender.MALE
+            institute=self.institute, name="Boys Hostel 1"
         )
         Machine.objects.create(
             hostel=self.hostel,
@@ -221,7 +221,7 @@ class AuthAPITests(APITestCase):
         self.assertEqual(student.institute_id, self.institute.id)
         self.assertEqual(student.home_hostel_id, self.hostel.id)
         self.assertFalse(student.floor)
-        self.assertEqual(student.gender, Gender.MALE)
+        self.assertEqual(student.gender, "")
         self.assertIsNone(student.email_verified_at)
         mock_send.assert_called_once()
         self.assertTrue(mock_send.call_args.kwargs["otp"].isdigit())

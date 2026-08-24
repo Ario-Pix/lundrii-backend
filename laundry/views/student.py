@@ -51,7 +51,6 @@ from laundry.services.booking import (
 from laundry.services.rules import (
     get_institute_rules,
     machine_is_visible,
-    student_gender,
 )
 from laundry.services.slots import (
     SLOT_RUNNING,
@@ -92,8 +91,8 @@ def _parse_date_param(value: str | None, *, default_today: bool = True):
 
 
 def _is_public_browse(student) -> bool:
-    """Guests and unplaced students may read occupancy; they cannot book."""
-    return student is None or not student_gender(student)
+    """Guests may read occupancy across institutes; students stay institute-scoped."""
+    return student is None
 
 
 def _visible_hostel_or_404(student, hostel_id) -> Hostel:
@@ -105,9 +104,7 @@ def _visible_hostel_or_404(student, hostel_id) -> Hostel:
         if not hostel.institute.is_active:
             raise NotFound("Hostel not found.")
         return hostel
-    if hostel.institute_id != student.institute_id or hostel.gender != student_gender(
-        student
-    ):
+    if hostel.institute_id != student.institute_id:
         raise NotFound("Hostel not found.")
     return hostel
 

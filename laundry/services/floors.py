@@ -26,7 +26,8 @@ _FLOOR_HEAD = re.compile(
     r"(?ix)"
     r"^\s*"
     r"(?P<label>"
-    r"ground(?:\s+floor)?"
+    r"basement"
+    r"|ground(?:\s+floor)?"
     r"|gf"
     r"|(?:\d+)(?:st|nd|rd|th)\s+floor"
     r"|floor\s+\d+"
@@ -45,6 +46,8 @@ def _ordinal(n: int) -> str:
 
 def _canonical_floor(raw: str) -> str:
     lowered = raw.lower().strip()
+    if lowered == "basement":
+        return "Basement"
     if lowered in ("ground", "ground floor", "gf"):
         return "Ground Floor"
     numbered = re.match(

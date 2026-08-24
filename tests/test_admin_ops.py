@@ -50,7 +50,7 @@ class AdminOpsWorldMixin:
             dryer_cap_enabled=False,
         )
         self.hostel = Hostel.objects.create(
-            institute=self.institute, name="Boys 1", gender=Gender.MALE
+            institute=self.institute, name="Boys 1"
         )
         self.washer = Machine.objects.create(
             hostel=self.hostel,

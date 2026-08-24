@@ -226,9 +226,6 @@ class HostelViewSet(InstituteScopedQuerysetMixin, SoftDestroyMixin, viewsets.Mod
         is_active = _parse_bool(self.request.query_params.get("is_active"))
         if is_active is not None:
             qs = qs.filter(is_active=is_active)
-        gender = self.request.query_params.get("gender")
-        if gender:
-            qs = qs.filter(gender=gender)
         return qs
 
     def perform_create(self, serializer):
@@ -814,16 +811,6 @@ class StudentViewSet(
                         "row": index,
                         "email": email,
                         "detail": f"Invalid gender '{gender_raw}'.",
-                    }
-                )
-                continue
-
-            if gender != hostel.gender:
-                errors.append(
-                    {
-                        "row": index,
-                        "email": email,
-                        "detail": "Gender does not match hostel designation.",
                     }
                 )
                 continue

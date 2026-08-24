@@ -262,6 +262,7 @@ class StrikeSerializer(serializers.ModelSerializer):
 class QuotaSerializer(serializers.Serializer):
     used = serializers.IntegerField()
     limit = serializers.IntegerField()
+    dryerUsed = serializers.IntegerField()
     windowDays = serializers.IntegerField()
     resetsAt = serializers.DateTimeField(allow_null=True)
 
@@ -307,6 +308,7 @@ class MeSerializer(serializers.Serializer):
             "quota": {
                 "used": quota["used"],
                 "limit": quota["limit"],
+                "dryerUsed": quota["dryer_used"],
                 "windowDays": quota["window_days"],
                 "resetsAt": quota["resets_at"],
             },
@@ -359,10 +361,6 @@ class MeUpdateSerializer(serializers.Serializer):
                 raise serializers.ValidationError(
                     {"hostelId": ["Hostel is outside your institute."]}
                 )
-            if student.gender and new_hostel.gender != student.gender:
-                raise serializers.ValidationError(
-                    {"hostelId": ["That hostel is not available for you."]}
-                )
             attrs["home_hostel"] = new_hostel
 
         return attrs
@@ -376,8 +374,6 @@ class MeUpdateSerializer(serializers.Serializer):
             instance.phone = validated_data["phone"]
         if "whatsapp_opt_in" in validated_data:
             instance.whatsapp_opt_in = validated_data["whatsapp_opt_in"]
-        if not instance.gender and instance.home_hostel_id:
-            instance.gender = instance.home_hostel.gender
         instance.save()
         return instance
 
@@ -385,7 +381,6 @@ class MeUpdateSerializer(serializers.Serializer):
 class EligibleHostelSerializer(serializers.Serializer):
     id = serializers.UUIDField()
     name = serializers.CharField()
-    gender = serializers.CharField()
     isHome = serializers.BooleanField()
 
     @classmethod
@@ -393,7 +388,6 @@ class EligibleHostelSerializer(serializers.Serializer):
         return {
             "id": hostel.id,
             "name": hostel.name,
-            "gender": hostel.gender,
             "isHome": bool(
                 student.home_hostel_id and hostel.id == student.home_hostel_id
             ),

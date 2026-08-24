@@ -49,7 +49,6 @@ from laundry.services.rules import (
     get_institute_rules,
     is_late_cancel,
     machine_is_visible,
-    student_gender,
     visible_hostels,
 )
 from laundry.services.slots import (
@@ -199,13 +198,6 @@ def _create_one(
 ) -> BookingItemResult:
     machine = _load_visible_machine(student, req.machine_id)
     if machine is None:
-        if not student_gender(student):
-            return BookingItemResult(
-                ok=False,
-                code=RULE_BLOCKED,
-                detail="Choose your hostel in Profile before booking.",
-                machine_id=str(req.machine_id) if req.machine_id else None,
-            )
         return BookingItemResult(
             ok=False,
             code="NOT_FOUND",

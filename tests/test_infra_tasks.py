@@ -153,7 +153,7 @@ class ViewsEnqueueTasksTests(APITestCase):
             allowed_email_domains=["gim.ac.in"],
         )
         self.hostel = Hostel.objects.create(
-            institute=self.institute, name="Boys Hostel 1", gender=Gender.MALE
+            institute=self.institute, name="Boys Hostel 1"
         )
         Machine.objects.create(
             hostel=self.hostel,

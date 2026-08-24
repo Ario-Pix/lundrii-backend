@@ -211,7 +211,6 @@ class SignupOptionsView(APIView):
                 {
                     "id": str(hostel.id),
                     "name": hostel.name,
-                    "gender": hostel.gender,
                     "instituteId": str(hostel.institute_id),
                     "instituteName": hostel.institute.name,
                 }
@@ -275,7 +274,7 @@ class RegisterView(APIView):
                     phone=data["phone"],
                     whatsapp_opt_in=data["whatsapp_opt_in"],
                     home_hostel=hostel,
-                    gender=hostel.gender,
+                    gender="",
                 )
         except IntegrityError as exc:
             raise APIError(

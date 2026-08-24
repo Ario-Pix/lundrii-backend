@@ -46,10 +46,10 @@ class StudentTicketApiTests(TestCase):
         )
         InstituteRule.objects.create(institute=self.institute)
         self.boys = Hostel.objects.create(
-            institute=self.institute, name="Boys 1", gender=Gender.MALE
+            institute=self.institute, name="Boys 1"
         )
         self.girls = Hostel.objects.create(
-            institute=self.institute, name="Girls 1", gender=Gender.FEMALE
+            institute=self.institute, name="Girls 1"
         )
         self.washer = Machine.objects.create(
             hostel=self.boys,
@@ -176,13 +176,26 @@ class StudentTicketApiTests(TestCase):
         self.assertEqual(res.status_code, 400)
         self.assertEqual(res.data["code"], "VALIDATION_ERROR")
 
-    def test_other_gender_machine_hidden(self):
+    def test_other_institute_machine_hidden(self):
+        other = Institute.objects.create(
+            name="Other Campus",
+            allowed_email_domains=["other.edu"],
+        )
+        other_hostel = Hostel.objects.create(institute=other, name="Other H")
+        other_washer = Machine.objects.create(
+            hostel=other_hostel,
+            kind=MachineKind.WASHER,
+            location_name="1st Floor",
+            operating_window_start=self.washer.operating_window_start,
+            operating_window_end=self.washer.operating_window_end,
+            slot_length_minutes=60,
+        )
         res = self.client.post(
             "/api/v1/tickets",
             {
                 "kind": TicketKind.MAINTENANCE,
                 "note": "Broken.",
-                "machineId": str(self.girl_washer.id),
+                "machineId": str(other_washer.id),
             },
             format="multipart",
         )

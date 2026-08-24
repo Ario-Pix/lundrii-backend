@@ -56,7 +56,6 @@ class RegisterSerializer(serializers.Serializer):
 class SignupHostelOptionSerializer(serializers.Serializer):
     id = serializers.UUIDField()
     name = serializers.CharField()
-    gender = serializers.CharField()
     instituteId = serializers.UUIDField()
     instituteName = serializers.CharField()
 

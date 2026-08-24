@@ -258,7 +258,7 @@ class ErrorEnvelopeTests(APITestCase):
             allowed_email_domains=["gim.ac.in"],
         )
         self.hostel = Hostel.objects.create(
-            institute=self.institute, name="Ganga", gender="male"
+            institute=self.institute, name="Ganga"
         )
         self.user = get_user_model().objects.create_user(
             email="aarav.mehta@gim.ac.in", password=self.password
@@ -311,7 +311,7 @@ class PaginationEnvelopeTests(APITestCase):
             allowed_email_domains=["gim.ac.in"],
         )
         self.hostel = Hostel.objects.create(
-            institute=self.institute, name="Ganga", gender="male"
+            institute=self.institute, name="Ganga"
         )
         self.user = get_user_model().objects.create_user(
             email="aarav.mehta@gim.ac.in", password=self.password

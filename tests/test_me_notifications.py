@@ -49,13 +49,13 @@ class MeAndNotificationAPITests(TestCase):
             dryer_cap_enabled=False,
         )
         self.boys = Hostel.objects.create(
-            institute=self.institute, name="Boys 1", gender=Gender.MALE
+            institute=self.institute, name="Boys 1"
         )
         self.boys_two = Hostel.objects.create(
-            institute=self.institute, name="Boys 2", gender=Gender.MALE
+            institute=self.institute, name="Boys 2"
         )
         self.girls = Hostel.objects.create(
-            institute=self.institute, name="Girls 1", gender=Gender.FEMALE
+            institute=self.institute, name="Girls 1"
         )
         self.washer = Machine.objects.create(
             hostel=self.boys,
@@ -134,6 +134,7 @@ class MeAndNotificationAPITests(TestCase):
         self.assertIsNone(data["suspensionEnds"])
         self.assertEqual(data["quota"]["used"], 2)
         self.assertEqual(data["quota"]["limit"], 3)
+        self.assertEqual(data["quota"]["dryerUsed"], 0)
         self.assertEqual(data["quota"]["windowDays"], 7)
         self.assertIsNotNone(data["quota"]["resetsAt"])
         self.assertEqual(len(data["strikes"]), 1)
@@ -178,15 +179,15 @@ class MeAndNotificationAPITests(TestCase):
         self.student.refresh_from_db()
         self.assertEqual(self.student.home_hostel_id, self.boys_two.id)
 
-    def test_patch_me_rejects_opposite_gender_hostel(self):
+    def test_patch_me_allows_any_institute_hostel(self):
         response = self.client.patch(
             "/api/v1/me",
             {"hostelId": str(self.girls.id)},
             format="json",
         )
-        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(response.status_code, 200, response.data)
         self.student.refresh_from_db()
-        self.assertEqual(self.student.home_hostel_id, self.boys.id)
+        self.assertEqual(self.student.home_hostel_id, self.girls.id)
 
     def test_patch_me_ignores_floor(self):
         response = self.client.patch(
@@ -198,17 +199,18 @@ class MeAndNotificationAPITests(TestCase):
         self.student.refresh_from_db()
         self.assertEqual(self.student.floor, "3rd Floor")
 
-    def test_me_hostels_same_gender_with_is_home(self):
+    def test_me_hostels_lists_institute_with_is_home(self):
         response = self.client.get("/api/v1/me/hostels")
         self.assertEqual(response.status_code, 200, response.data)
         names = {row["name"]: row for row in response.data}
         self.assertIn("Boys 1", names)
         self.assertIn("Boys 2", names)
-        self.assertNotIn("Girls 1", names)
+        self.assertIn("Girls 1", names)
         self.assertTrue(names["Boys 1"]["isHome"])
         self.assertFalse(names["Boys 2"]["isHome"])
+        self.assertNotIn("gender", response.data[0])
 
-    def test_me_hostels_when_gender_blank_uses_home_hostel(self):
+    def test_me_hostels_when_gender_blank_still_lists_institute(self):
         self.student.gender = ""
         self.student.save(update_fields=["gender", "updated_at"])
         response = self.client.get("/api/v1/me/hostels")
@@ -216,11 +218,11 @@ class MeAndNotificationAPITests(TestCase):
         names = {row["name"] for row in response.data}
         self.assertIn("Boys 1", names)
         self.assertIn("Boys 2", names)
-        self.assertNotIn("Girls 1", names)
+        self.assertIn("Girls 1", names)
         me = self.client.get("/api/v1/me")
-        self.assertEqual(me.data["gender"], Gender.MALE)
+        self.assertIsNone(me.data["gender"])
 
-    def test_patch_hostel_fills_blank_gender(self):
+    def test_patch_hostel_does_not_fill_blank_gender(self):
         self.student.gender = ""
         self.student.save(update_fields=["gender", "updated_at"])
         response = self.client.patch(
@@ -229,9 +231,9 @@ class MeAndNotificationAPITests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(response.data["gender"], Gender.MALE)
+        self.assertIsNone(response.data["gender"])
         self.student.refresh_from_db()
-        self.assertEqual(self.student.gender, Gender.MALE)
+        self.assertEqual(self.student.gender, "")
         self.assertEqual(self.student.home_hostel_id, self.boys_two.id)
 
     def test_me_institute_rules_and_domains(self):
@@ -341,9 +343,47 @@ class MeAndNotificationAPITests(TestCase):
         status = quota_status(self.student, now=now, rules=self.rules)
         self.assertEqual(status["used"], 2)
         self.assertEqual(status["limit"], 3)
+        self.assertEqual(status["dryer_used"], 0)
         self.assertEqual(status["window_days"], 7)
         self.assertEqual(status["resets_at"], aware(2026, 8, 10, 0))
 
         self._add_washer(aware(2026, 8, 9, 8))
         clears = cooldown_clears_at(self.student, now=now, rules=self.rules)
         self.assertIsNone(clears)
+
+    def test_quota_status_counts_dryer_used_separately(self):
+        now = aware(2026, 8, 9, 12)
+        dryer = Machine.objects.create(
+            hostel=self.boys,
+            kind=MachineKind.DRYER,
+            location_name="Ground Floor · B Wing",
+            operating_window_start=self.washer.operating_window_start,
+            operating_window_end=self.washer.operating_window_end,
+            slot_length_minutes=60,
+        )
+        Booking.objects.create(
+            student=self.student,
+            machine=dryer,
+            starts_at=aware(2026, 8, 8, 14),
+            ends_at=aware(2026, 8, 8, 15),
+            counts_against_quota=False,
+        )
+        Booking.objects.create(
+            student=self.student,
+            machine=dryer,
+            starts_at=aware(2026, 8, 9, 10),
+            ends_at=aware(2026, 8, 9, 11),
+            counts_against_quota=False,
+        )
+        # Cancelled dryer should not count.
+        Booking.objects.create(
+            student=self.student,
+            machine=dryer,
+            starts_at=aware(2026, 8, 9, 16),
+            ends_at=aware(2026, 8, 9, 17),
+            cancelled_at=now,
+            counts_against_quota=False,
+        )
+        status = quota_status(self.student, now=now, rules=self.rules)
+        self.assertEqual(status["used"], 0)
+        self.assertEqual(status["dryer_used"], 2)
