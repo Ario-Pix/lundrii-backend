@@ -1,0 +1,11 @@
+{% extends "emails/base.txt" %}
+{% block content %}
+Hi {{ name }},
+
+Your laundry slot is booked.
+
+Machine: {{ machine }}
+Hostel: {{ hostel }}
+When: {{ when }}
+{% endblock %}
+{% block footer %}You received this because you booked a laundry slot on Lundrii.{% endblock %}

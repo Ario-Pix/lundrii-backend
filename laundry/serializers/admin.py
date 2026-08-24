@@ -164,6 +164,8 @@ class HostelSerializer(serializers.ModelSerializer):
         queryset=Institute.objects.all(), required=False
     )
     institute_name = serializers.CharField(source="institute.name", read_only=True)
+    machine_count = serializers.IntegerField(read_only=True)
+    resident_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Hostel
@@ -172,6 +174,8 @@ class HostelSerializer(serializers.ModelSerializer):
             "institute",
             "institute_name",
             "name",
+            "machine_count",
+            "resident_count",
             "is_active",
             "created_at",
             "updated_at",

@@ -71,6 +71,22 @@ class EmailSerializer(serializers.Serializer):
         return _normalize_email(value)
 
 
+class LoginRequestOtpSerializer(EmailSerializer):
+    """
+    OTP request payload.
+
+    `password` is optional so student web can continue email-only OTP requests.
+    Admin portal includes password and the backend gates OTP issuance on it.
+    """
+
+    password = serializers.CharField(
+        required=False,
+        write_only=True,
+        allow_blank=True,
+        trim_whitespace=False,
+    )
+
+
 class LoginSerializer(serializers.Serializer):
     """Student email + password login."""
 

@@ -87,7 +87,7 @@ class MeHostelsView(StudentAPIMixin, APIView):
                 "cooldownHours": 0,
                 "advanceWindowDays": 7,
                 "cancellationCutoffHours": 6,
-                "dryerCapEnabled": False,
+                "dryerCapEnabled": True,
             },
             response_only=True,
         )

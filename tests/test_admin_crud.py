@@ -101,9 +101,17 @@ class AdminApiTests(APITestCase):
         self.client.force_authenticate(self.admin_user)
         res = self.client.get("/api/v1/admin/hostels/")
         self.assertEqual(res.status_code, 200)
-        ids = {row["id"] for row in res.data["results"]}
+        rows_by_id = {row["id"]: row for row in res.data["results"]}
+        ids = set(rows_by_id)
         self.assertIn(str(self.hostel.id), ids)
         self.assertNotIn(str(self.other_hostel.id), ids)
+        self.assertEqual(rows_by_id[str(self.hostel.id)]["machine_count"], 1)
+        self.assertEqual(rows_by_id[str(self.hostel.id)]["resident_count"], 1)
+
+        res = self.client.get(f"/api/v1/admin/hostels/{self.hostel.id}/")
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(res.data["machine_count"], 1)
+        self.assertEqual(res.data["resident_count"], 1)
 
         res = self.client.post(
             "/api/v1/admin/hostels/",

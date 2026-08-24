@@ -115,8 +115,12 @@ class InstituteRule(BaseModel):
         help_text="Cancelling later than this many hours before start still counts against quota.",
     )
     dryer_cap_enabled = models.BooleanField(
-        default=False,
-        help_text="If enabled, dryer bookings consume washer quota.",
+        default=True,
+        help_text=(
+            "If enabled, dryer bookings have a separate weekly cap equal to "
+            "quota_limit (same Monday–Sunday window). Dryers never consume "
+            "washer quota."
+        ),
     )
 
     class Meta:

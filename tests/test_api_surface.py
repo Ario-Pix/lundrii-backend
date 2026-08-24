@@ -31,6 +31,7 @@ PUBLIC_PREFIXES = (
     "/health/",
     "/api/v1/auth/",
     # Guest Book browse — occupancy only; booking POST stays private.
+    "/api/v1/home",
     "/api/v1/hostels/",
     "/api/v1/machines/",
     "/api/schema",
@@ -110,6 +111,7 @@ class RouteInventoryTests(SimpleTestCase):
             "auth-forgot-password",
             "auth-reset-password",
             # Student
+            "student-home",
             "student-me",
             "student-me-hostels",
             "student-me-institute",

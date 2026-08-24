@@ -1,4 +1,6 @@
 {% extends "emails/base.txt" %}
 {% block content %}
-Verify your email with code {{ otp }} or open: {{ link }}
+Hi {{ name }},
+
+Verify {{ email }} with code {{ otp }} or open: {{ link }}
 {% endblock %}

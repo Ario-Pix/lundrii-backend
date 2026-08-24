@@ -110,6 +110,11 @@ urlpatterns = [
     path("admin/", include(admin_router.urls)),
     # Student mobile routes (Wave 2c) — do not remove admin routes above.
     path(
+        "home",
+        student_views.HomeView.as_view(),
+        name="student-home",
+    ),
+    path(
         "hostels/<uuid:hostel_id>/machines",
         student_views.HostelMachineListView.as_view(),
         name="student-hostel-machines",

@@ -1,9 +1,10 @@
 import os
-from pathlib import Path
+import sys
 
 from django.core.exceptions import ImproperlyConfigured
 
 from .base import *  # noqa: F403
+from .base import _postgres_from_url
 
 DEBUG = False
 SECRET_KEY = os.getenv("SECRET_KEY", "")
@@ -18,29 +19,26 @@ if SECRET_KEY.strip() in _PLACEHOLDER_SECRET_KEYS:
         "SECRET_KEY must be a non-placeholder value when DEBUG is False."
     )
 
-# Production always uses SQLite — ignore DATABASE_URL even if Railway injects Postgres.
-_db_path = Path(os.getenv("LUNDRII_DB_PATH", str(BASE_DIR / "db.sqlite3")))
-if not _db_path.is_file():
-    raise ImproperlyConfigured(
-        f"db.sqlite3 not found at {_db_path}. Commit backend/db.sqlite3 and ensure "
-        "it is not excluded by .dockerignore."
-    )
-
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": _db_path,
-        "OPTIONS": {
-            "transaction_mode": "IMMEDIATE",
-            "timeout": 20,
-            "init_command": (
-                "PRAGMA journal_mode=WAL;"
-                "PRAGMA synchronous=NORMAL;"
-                "PRAGMA foreign_keys=ON;"
-            ),
-        },
+# Production is Neon (or any Postgres) via DATABASE_URL. Committed db.sqlite3 is
+# not the runtime database. collectstatic during the Docker image build has no
+# DATABASE_URL; an in-memory SQLite is enough because collectstatic never opens
+# a connection.
+_prod_database_url = os.getenv("DATABASE_URL", "").strip()
+if _prod_database_url:
+    DATABASES = {"default": _postgres_from_url(_prod_database_url)}
+elif "collectstatic" in sys.argv:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": ":memory:",
+        }
     }
-}
+else:
+    raise ImproperlyConfigured(
+        "DATABASE_URL is required in production. Set a postgres:// or "
+        "postgresql:// URL (Neon). collectstatic during image build is the "
+        "only exception."
+    )
 
 ALLOWED_HOSTS = [
     "lundrii-backend-production.up.railway.app",
@@ -49,8 +47,12 @@ ALLOWED_HOSTS = [
 ]
 CORS_ALLOWED_ORIGINS = [
     "https://lundrii-web-application.vercel.app",
+    "https://lundrii-admin-portal.vercel.app",
 ]
 FRONTEND_URL = "https://lundrii-web-application.vercel.app"
+ADMIN_FRONTEND_URL = os.getenv(
+    "ADMIN_FRONTEND_URL", "https://lundrii-admin-portal.vercel.app"
+)
 
 CACHE_BACKEND = os.getenv("CACHE_BACKEND", "db")
 CACHES = build_caches(CACHE_BACKEND)

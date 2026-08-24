@@ -222,7 +222,10 @@ class HostelViewSet(InstituteScopedQuerysetMixin, SoftDestroyMixin, viewsets.Mod
     institute_filter = "institute"
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = super().get_queryset().annotate(
+            machine_count=Count("machines", distinct=True),
+            resident_count=Count("residents", distinct=True),
+        )
         is_active = _parse_bool(self.request.query_params.get("is_active"))
         if is_active is not None:
             qs = qs.filter(is_active=is_active)
@@ -694,7 +697,12 @@ class StudentViewSet(
         try:
             otp = create_otp(email, OtpPurpose.RESET, record_send=True)
             token = create_reset_link(user.id)
-            send_password_reset_email_task.enqueue(to=email, otp=otp, token=token)
+            send_password_reset_email_task.enqueue(
+                to=email,
+                otp=otp,
+                token=token,
+                name=(student.name or "").strip(),
+            )
         except (OtpCooldown, OtpRateLimited):
             return Response(
                 {"detail": "Unable to send reset link right now. Try again shortly."},

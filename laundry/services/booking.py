@@ -31,6 +31,7 @@ from base.exceptions import (
     RULE_BLOCKED,
     SLOT_TAKEN,
 )
+from base.tasks import send_booking_confirmed_email_task
 from laundry.models import (
     AvailabilityMiss,
     Booking,
@@ -174,16 +175,35 @@ def _lock_machine(machine: Machine) -> None:
 
 
 def _notify_booking_confirmed(booking: Booking) -> None:
-    when = timezone.localtime(booking.starts_at).strftime("%Y-%m-%d %H:%M")
+    local_start = timezone.localtime(booking.starts_at)
+    when_short = local_start.strftime("%Y-%m-%d %H:%M")
+    when_email = local_start.strftime("%a %d %b %Y, %H:%M")
     create_in_app_notification(
         student=booking.student,
         title="Booking confirmed",
-        body=f"{booking.machine.location_name} · {when} is yours.",
+        body=f"{booking.machine.location_name} · {when_short} is yours.",
         notification_type=NotificationType.BOOKING_CONFIRMED,
         kind=NotificationKind.SUCCESS,
         related_object_type="booking",
         related_object_id=booking.id,
         preference_field="booking_confirmed",
+    )
+    # One transactional email per successful create (not on peeks / moves).
+    student = booking.student
+    user = getattr(student, "user", None)
+    to = (getattr(user, "email", None) or "").strip()
+    if not to:
+        return
+    hostel_name = ""
+    machine = booking.machine
+    if getattr(machine, "hostel", None) is not None:
+        hostel_name = machine.hostel.name or ""
+    send_booking_confirmed_email_task.enqueue(
+        to=to,
+        name=(student.name or "").strip(),
+        machine=machine.location_name or str(machine),
+        hostel=hostel_name,
+        when=when_email,
     )
 
 
@@ -277,6 +297,7 @@ def _create_one(
         "machine",
         "machine__hostel",
         "student",
+        "student__user",
     ).get(pk=booking.pk)
     if notify:
         _notify_booking_confirmed(booking)

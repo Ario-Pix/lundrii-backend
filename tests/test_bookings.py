@@ -1,6 +1,7 @@
 """Focused tests for slot derivation, fairness rules, and booking services."""
 
 from datetime import datetime, time, timedelta
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -262,6 +263,7 @@ class RulesEngineTests(FixtureMixin, TestCase):
         self.add_booking(self.student, self.washer, aware(2026, 8, 6, 10))
         self.add_booking(self.student, self.washer, aware(2026, 8, 8, 10))
         start = aware(2026, 8, 9, 16)
+        # Full washer week does not block dryers (separate caps).
         self.assertIsNone(
             check_booking_rules(
                 self.student,
@@ -273,15 +275,29 @@ class RulesEngineTests(FixtureMixin, TestCase):
         )
         self.rules.dryer_cap_enabled = True
         self.rules.save(update_fields=["dryer_cap_enabled"])
-        # Drop cached O2O
         self.institute.refresh_from_db()
+        rules = get_institute_rules(self.institute)
+        # Still free — washer usage does not fill the dryer cap.
+        self.assertIsNone(
+            check_booking_rules(
+                self.student,
+                self.dryer,
+                start,
+                start + timedelta(hours=1),
+                now=self.now,
+                rules=rules,
+            )
+        )
+        self.add_booking(self.student, self.dryer, aware(2026, 8, 4, 12))
+        self.add_booking(self.student, self.dryer, aware(2026, 8, 6, 12))
+        self.add_booking(self.student, self.dryer, aware(2026, 8, 8, 12))
         block = check_booking_rules(
             self.student,
             self.dryer,
             start,
             start + timedelta(hours=1),
             now=self.now,
-            rules=get_institute_rules(self.institute),
+            rules=rules,
         )
         self.assertIsNotNone(block)
         self.assertEqual(block.rule, RULE_QUOTA)
@@ -308,6 +324,50 @@ class BookingServiceTests(FixtureMixin, TestCase):
         )
         self.assertFalse(taken[0].ok)
         self.assertEqual(taken[0].code, "SLOT_TAKEN")
+
+    @patch("laundry.services.booking.send_booking_confirmed_email_task")
+    def test_successful_create_enqueues_confirmation_email(self, mock_task):
+        start = aware(2026, 8, 9, 16)
+        results = create_bookings(
+            self.student,
+            [BookingRequest(machine_id=self.washer.id, starts_at=start)],
+            now=self.now,
+        )
+        self.assertTrue(results[0].ok)
+        mock_task.enqueue.assert_called_once()
+        kwargs = mock_task.enqueue.call_args.kwargs
+        self.assertEqual(kwargs["to"], self.student.user.email)
+        self.assertEqual(kwargs["name"], self.student.name)
+        self.assertEqual(kwargs["machine"], self.washer.location_name)
+        self.assertEqual(kwargs["hostel"], self.boys.name)
+        self.assertIn("16:00", kwargs["when"])
+
+    @patch("laundry.services.booking.send_booking_confirmed_email_task")
+    def test_slot_taken_does_not_send_confirmation_email(self, mock_task):
+        start = aware(2026, 8, 9, 16)
+        self.add_booking(self.student, self.washer, start)
+        peer = self.make_student("peer@gim.ac.in", "Peer", Gender.MALE)
+        taken = create_bookings(
+            peer,
+            [BookingRequest(machine_id=self.washer.id, starts_at=start)],
+            now=self.now,
+        )
+        self.assertFalse(taken[0].ok)
+        mock_task.enqueue.assert_not_called()
+
+    @patch("laundry.services.booking.send_booking_confirmed_email_task")
+    def test_move_does_not_send_confirmation_email(self, mock_task):
+        original = aware(2026, 8, 9, 16)
+        dest = aware(2026, 8, 9, 18)
+        booking = self.add_booking(self.student, self.washer, original)
+        mock_task.enqueue.reset_mock()
+        move_booking(
+            self.student,
+            booking,
+            BookingRequest(machine_id=self.washer.id, starts_at=dest),
+            now=self.now,
+        )
+        mock_task.enqueue.assert_not_called()
 
     def test_combined_partial_success(self):
         start = aware(2026, 8, 9, 16)

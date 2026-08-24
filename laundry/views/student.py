@@ -26,14 +26,17 @@ from base.apidocs import (
 )
 from base.clients import resolve_channel
 from base.permissions import IsStudent
-from laundry.models import Hostel, Machine
+from laundry.models import Exchange, ExchangeStatus, Hostel, Machine
 from laundry.serializers.student import (
     AvailabilityMissCreateSerializer,
     AvailabilityMissSerializer,
     BookingCreateSerializer,
     BookingMoveSerializer,
     BookingSerializer,
+    EligibleHostelSerializer,
+    HomeSerializer,
     MachineCardSerializer,
+    MeSerializer,
     MoveOptionSerializer,
     SlotSerializer,
 )
@@ -48,9 +51,11 @@ from laundry.services.booking import (
     record_availability_miss,
     upcoming_bookings_qs,
 )
+from laundry.services.exchanges import expire_stale_pendings
 from laundry.services.rules import (
     get_institute_rules,
     machine_is_visible,
+    visible_hostels,
 )
 from laundry.services.slots import (
     SLOT_RUNNING,
@@ -165,6 +170,122 @@ class BrowseScheduleMixin:
     """Read-only machines/slots/availability. Guests see occupancy; students keep personal states."""
 
     permission_classes = [AllowAny]
+
+
+def _resolve_home_hostel(student, requested_hostel_id: str | None) -> Hostel | None:
+    """Pick selected hostel: optional query → home → first eligible. Bad id → 404."""
+    if student is not None:
+        hostels = list(visible_hostels(student).order_by("name"))
+    else:
+        hostels = list(
+            Hostel.objects.filter(is_active=True, institute__is_active=True)
+            .select_related("institute")
+            .order_by("institute__name", "name")
+        )
+
+    if requested_hostel_id:
+        return _visible_hostel_or_404(student, requested_hostel_id)
+
+    if not hostels:
+        return None
+    if student is not None and student.home_hostel_id:
+        for hostel in hostels:
+            if hostel.id == student.home_hostel_id:
+                return hostel
+    return hostels[0]
+
+
+def _home_hostel_payload(student) -> list[dict]:
+    if student is not None:
+        hostels = visible_hostels(student).order_by("name")
+        return [EligibleHostelSerializer.from_hostel(h, student) for h in hostels]
+    hostels = (
+        Hostel.objects.filter(is_active=True, institute__is_active=True)
+        .select_related("institute")
+        .order_by("institute__name", "name")
+    )
+    return [EligibleHostelSerializer.public(h) for h in hostels]
+
+
+def _pending_incoming_exchange_count(student) -> int:
+    expire_stale_pendings(student=student)
+    return Exchange.objects.filter(
+        holder=student,
+        status=ExchangeStatus.PENDING,
+    ).count()
+
+
+class HomeView(BrowseScheduleMixin, APIView):
+    """One call for Home: profile (if JWT), hostels, machines, washer counts, upcoming."""
+
+    pagination_class = None
+    serializer_class = HomeSerializer
+
+    @extend_schema(
+        summary="Home bootstrap",
+        description=(
+            "Single payload for the Home screen. Guests get public hostels and "
+            "live machine cards; a student JWT adds profile, upcoming bookings "
+            "(max 2), and pending incoming exchange count.\n\n"
+            "Optional `hostelId` selects the hostel (same visibility rules as "
+            "availability/now). Omit it to use home hostel, then first eligible."
+        ),
+        parameters=[
+            OpenApiParameter(
+                "hostelId",
+                str,
+                description="Hostel to show machines and washer counts for.",
+            )
+        ],
+        responses=HomeSerializer,
+    )
+    def get(self, request):
+        student = _optional_student(request)
+        requested = (request.query_params.get("hostelId") or "").strip() or None
+        selected = _resolve_home_hostel(student, requested)
+
+        hostels = _home_hostel_payload(student)
+        profile = MeSerializer.from_student(student) if student else None
+        upcoming: list = []
+        pending = 0
+        if student is not None:
+            bookings = list(upcoming_bookings_qs(student)[:2])
+            upcoming = BookingSerializer(
+                bookings, many=True, context={"request": request}
+            ).data
+            pending = _pending_incoming_exchange_count(student)
+
+        if selected is None:
+            return Response(
+                {
+                    "profile": profile,
+                    "hostels": hostels,
+                    "selectedHostelId": None,
+                    "machines": [],
+                    "washersFree": 0,
+                    "washersTotal": 0,
+                    "upcoming": upcoming,
+                    "pendingIncomingExchangeCount": pending,
+                }
+            )
+
+        snap = hostel_availability_now(selected, student=student)
+        washers = snap["washers"]
+        return Response(
+            {
+                "profile": profile,
+                "hostels": hostels,
+                "selectedHostelId": selected.id,
+                "machines": [
+                    MachineCardSerializer.from_machine(row["machine"], row)
+                    for row in snap["machines"]
+                ],
+                "washersFree": washers["free_now"],
+                "washersTotal": washers["total"],
+                "upcoming": upcoming,
+                "pendingIncomingExchangeCount": pending,
+            }
+        )
 
 
 class HostelMachineListView(BrowseScheduleMixin, ListAPIView):

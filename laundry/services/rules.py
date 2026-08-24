@@ -44,21 +44,23 @@ def get_institute_rules(institute: Institute) -> InstituteRule:
 
 
 def booking_counts_toward_quota(machine: Machine, rules: InstituteRule) -> bool:
+    """Whether this booking should count against its machine-kind weekly cap.
+
+    Washers always count against the washer quota. Dryers count against the
+    separate dryer cap only when ``dryer_cap_enabled`` — they never consume
+    washer quota.
+    """
     if machine.kind == MachineKind.WASHER:
         return True
     return bool(rules.dryer_cap_enabled)
 
 
-def _profile_quota_kinds(rules: InstituteRule) -> list[str]:
-    if rules.dryer_cap_enabled:
-        return [MachineKind.WASHER, MachineKind.DRYER]
+def _washer_quota_kinds() -> list[str]:
     return [MachineKind.WASHER]
 
 
-def _kinds_for_quota_and_cooldown(machine: Machine, rules: InstituteRule) -> list[str]:
-    if machine.kind == MachineKind.DRYER and not rules.dryer_cap_enabled:
-        return []
-    return _profile_quota_kinds(rules)
+def _dryer_quota_kinds() -> list[str]:
+    return [MachineKind.DRYER]
 
 
 def _aware(dt: datetime) -> datetime:
@@ -156,9 +158,11 @@ def check_booking_rules(
             code=OUTSIDE_ADVANCE_WINDOW,
         )
 
-    kinds = _kinds_for_quota_and_cooldown(machine, rules)
-    if not kinds:
-        return None
+    kinds = _washer_quota_kinds()
+    if machine.kind == MachineKind.DRYER:
+        if not rules.dryer_cap_enabled:
+            return None
+        kinds = _dryer_quota_kinds()
 
     limit = int(rules.quota_limit or 0)
     week_start, week_end = quota_week_bounds(starts_at)
@@ -169,13 +173,20 @@ def check_booking_rules(
     )
     used = len(_starts_in_week(existing_starts, week_start, week_end))
     if used >= limit:
+        if machine.kind == MachineKind.DRYER:
+            detail = (
+                f"Weekly dryer quota is {limit} booking"
+                f"{'s' if limit != 1 else ''} Monday to Sunday."
+            )
+        else:
+            detail = (
+                f"Weekly quota is {limit} wash"
+                f"{'es' if limit != 1 else ''} Monday to Sunday."
+            )
         return RuleBlock(
             rule=RULE_QUOTA,
             clears_at=week_end,
-            detail=(
-                f"Weekly quota is {limit} wash"
-                f"{'es' if limit != 1 else ''} Monday to Sunday."
-            ),
+            detail=detail,
             code=RULE_BLOCKED,
         )
 
@@ -203,21 +214,21 @@ def quota_status(
     """
     Monday–Sunday quota usage for profile display.
 
-    Counts the same bookings as ``check_booking_rules`` (``counts_against_quota``,
-    washer — plus dryer when dryer-cap is on). Bookings in other weeks are
-    excluded; upcoming starts later this week still consume this week's quota.
-    ``resets_at`` is always next Monday 00:00.
+    Counts washer bookings that ``counts_against_quota`` (same as
+    ``check_booking_rules``). Bookings in other weeks are excluded; upcoming
+    starts later this week still consume this week's quota. ``resets_at`` is
+    always next Monday 00:00.
 
-    ``dryer_used`` is a separate display count of active dryer bookings this week
-    (independent of whether dryers consume washer quota).
+    ``dryer_used`` / ``dryer_limit`` are a separate dryer weekly cap when
+    ``dryer_cap_enabled`` (limit matches ``quota_limit``). Dryers never share
+    the washer quota.
     """
     now = _aware(now or timezone.now())
     rules = rules or get_institute_rules(student.institute)
     window_days = int(rules.quota_window_days or 7)
     limit = int(rules.quota_limit or 0)
     week_start, week_end = quota_week_bounds(now)
-    kinds = _profile_quota_kinds(rules)
-    starts = _quota_counting_starts(student, kinds)
+    starts = _quota_counting_starts(student, _washer_quota_kinds())
     used = len(_starts_in_week(starts, week_start, week_end))
     dryer_starts = list(
         Booking.objects.filter(
@@ -229,10 +240,12 @@ def quota_status(
             starts_at__lt=week_end,
         ).values_list("starts_at", flat=True)
     )
+    dryer_limit = limit if rules.dryer_cap_enabled else 0
     return {
         "used": used,
         "limit": limit,
         "dryer_used": len(dryer_starts),
+        "dryer_limit": dryer_limit,
         "window_days": window_days,
         "resets_at": week_end,
     }

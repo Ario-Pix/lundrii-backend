@@ -24,7 +24,7 @@ from laundry.models import (
     Ticket,
     TicketKind,
 )
-from laundry.services.rules import cooldown_clears_at, quota_status
+from laundry.services.rules import cooldown_clears_at, quota_status, quota_week_bounds
 
 User = get_user_model()
 
@@ -97,11 +97,15 @@ class MeAndNotificationAPITests(TestCase):
         self.assertEqual(response.status_code, 401)
 
     def test_get_me_profile_quota_and_strikes(self):
-        past = self.now - timedelta(days=2)
-        self._add_washer(past.replace(minute=0, second=0, microsecond=0))
+        week_start, _week_end = quota_week_bounds(self.now)
+        # Two starts firmly inside this Monday–Sunday week (not “now − 2 days”,
+        # which falls in the previous week early Monday/Tuesday).
+        self._add_washer(week_start + timedelta(hours=10))
         upcoming = (self.now + timedelta(hours=8)).replace(
             minute=0, second=0, microsecond=0
         )
+        if upcoming < week_start:
+            upcoming = week_start + timedelta(days=1, hours=12)
         self._add_washer(upcoming)
 
         ticket = Ticket.objects.create(
@@ -135,6 +139,7 @@ class MeAndNotificationAPITests(TestCase):
         self.assertEqual(data["quota"]["used"], 2)
         self.assertEqual(data["quota"]["limit"], 3)
         self.assertEqual(data["quota"]["dryerUsed"], 0)
+        self.assertEqual(data["quota"]["dryerLimit"], 0)
         self.assertEqual(data["quota"]["windowDays"], 7)
         self.assertIsNotNone(data["quota"]["resetsAt"])
         self.assertEqual(len(data["strikes"]), 1)
@@ -344,6 +349,7 @@ class MeAndNotificationAPITests(TestCase):
         self.assertEqual(status["used"], 2)
         self.assertEqual(status["limit"], 3)
         self.assertEqual(status["dryer_used"], 0)
+        self.assertEqual(status["dryer_limit"], 0)
         self.assertEqual(status["window_days"], 7)
         self.assertEqual(status["resets_at"], aware(2026, 8, 10, 0))
 
@@ -387,3 +393,4 @@ class MeAndNotificationAPITests(TestCase):
         status = quota_status(self.student, now=now, rules=self.rules)
         self.assertEqual(status["used"], 0)
         self.assertEqual(status["dryer_used"], 2)
+        self.assertEqual(status["dryer_limit"], 0)

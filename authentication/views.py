@@ -16,6 +16,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from authentication.serializers import (
     EmailSerializer,
     LoginSerializer,
+    LoginRequestOtpSerializer,
     LoginVerifyOtpSerializer,
     LogoutSerializer,
     RegisterSerializer,
@@ -42,6 +43,7 @@ from authentication.services.institutes import (
     resolve_institute_for_email,
 )
 from base.clients import declared_channel
+from base.email import send_password_reset_email_with_token
 from base.tasks import (
     send_login_otp_email_task,
     send_password_reset_email_task,
@@ -78,6 +80,26 @@ def _get_student(user) -> Student | None:
         return user.student
     except (ObjectDoesNotExist, AttributeError):
         return None
+
+
+def _display_name_for_email(user) -> str:
+    """Best-effort display name for outbound mail; empty if unknown."""
+    student = _get_student(user)
+    if student is not None:
+        name = (student.name or "").strip()
+        if name:
+            return name
+    for attr in ("administrator", "superadministrator"):
+        try:
+            profile = getattr(user, attr)
+        except (ObjectDoesNotExist, AttributeError):
+            continue
+        if profile is None:
+            continue
+        name = (getattr(profile, "display_name", None) or "").strip()
+        if name:
+            return name
+    return ""
 
 
 def _is_admin_user(user) -> bool:
@@ -267,7 +289,7 @@ class RegisterView(APIView):
                     email=email,
                     password=data["password"],
                 )
-                Student.objects.create(
+                student = Student.objects.create(
                     user=user,
                     institute=institute,
                     name=data["name"],
@@ -287,7 +309,13 @@ class RegisterView(APIView):
         except (OtpCooldown, OtpRateLimited, OtpLocked) as exc:
             raise_for_otp_service(exc)
         token = create_verify_link(user.id)
-        send_verify_email_task.enqueue(to=user.email, otp=otp, token=token)
+        send_verify_email_task.enqueue(
+            to=user.email,
+            otp=otp,
+            token=token,
+            name=student.name,
+            email=user.email,
+        )
 
         return Response(
             {
@@ -357,19 +385,37 @@ class LoginRequestOtpView(APIView):
 
     permission_classes = [AllowAny]
     authentication_classes: list = []
-    serializer_class = EmailSerializer
+    serializer_class = LoginRequestOtpSerializer
 
     def post(self, request):
-        ser = EmailSerializer(data=request.data)
+        ser = LoginRequestOtpSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         email = ser.validated_data["email"]
+        password = ser.validated_data.get("password")
 
         record_send_or_rate_limit(email, OtpPurpose.LOGIN)
 
         user = _active_user_by_email(email)
-        if user is not None and _can_login_with_otp(user):
+        should_send = False
+        if password is None:
+            # Existing student email-only OTP flow (and legacy admin behavior).
+            should_send = user is not None and _can_login_with_otp(user)
+        else:
+            # Admin portal flow: password is required and must match an admin user.
+            should_send = (
+                user is not None
+                and _is_admin_user(user)
+                and bool(password)
+                and user.check_password(password)
+            )
+
+        if should_send:
             otp = create_otp(email, OtpPurpose.LOGIN, record_send=False)
-            send_login_otp_email_task.enqueue(to=user.email, otp=otp)
+            send_login_otp_email_task.enqueue(
+                to=user.email,
+                otp=otp,
+                name=_display_name_for_email(user),
+            )
 
         return Response({"detail": OPAQUE_LOGIN})
 
@@ -483,7 +529,13 @@ class ResendVerificationView(APIView):
         if student is not None and student.email_verified_at is None:
             otp = create_otp(email, OtpPurpose.VERIFY, record_send=False)
             token = create_verify_link(user.id)
-            send_verify_email_task.enqueue(to=user.email, otp=otp, token=token)
+            send_verify_email_task.enqueue(
+                to=user.email,
+                otp=otp,
+                token=token,
+                name=student.name,
+                email=user.email,
+            )
 
         return Response({"detail": OPAQUE_RESEND})
 
@@ -504,7 +556,19 @@ class ForgotPasswordView(APIView):
         if user is not None:
             otp = create_otp(email, OtpPurpose.RESET, record_send=False)
             token = create_reset_link(user.id)
-            send_password_reset_email_task.enqueue(to=user.email, otp=otp, token=token)
+            name = _display_name_for_email(user)
+            if _is_admin_user(user):
+                send_password_reset_email_with_token(
+                    to=user.email,
+                    otp=otp,
+                    token=token,
+                    is_admin=True,
+                    name=name,
+                )
+            else:
+                send_password_reset_email_task.enqueue(
+                    to=user.email, otp=otp, token=token, name=name
+                )
 
         return Response({"detail": OPAQUE_FORGOT})
 

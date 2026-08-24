@@ -9,9 +9,11 @@ OTP codes print to the runserver console when `DEBUG=True` and `RESEND_API_KEY` 
 | Sign up | Register + domain reject | `POST /auth/register` |
 | Verify email | Link token **or** email+OTP; resend | `POST /auth/verify-email`, `POST /auth/resend-verification` |
 | Sign in (student) | Email + password → JWT | `POST /auth/login` `{email, password}` — **students only**; admins rejected |
-| Sign in (admin OTP) | Request code → verify → JWT | `POST /auth/login/request-otp`, `POST /auth/login/verify-otp` — **admin roles only**; students get an opaque message |
+| Sign in (admin OTP) | Email + password request → verify → JWT | `POST /auth/login/request-otp` `{email, password}`, `POST /auth/login/verify-otp` — OTP is sent only for active admin/super-admin with a correct password; invalid users/passwords are opaque |
+| Sign in (student OTP) | Email-only request → verify → JWT | `POST /auth/login/request-otp` `{email}`, `POST /auth/login/verify-otp` — unchanged student OTP flow |
 | Forgot / reset | Link token **or** email+OTP+password | `POST /auth/forgot-password`, `POST /auth/reset-password` |
 | Sign out | Blacklist refresh | `POST /auth/logout` · refresh `POST /auth/refresh` |
+| Home | Bootstrap (profile, hostels, machines, washer counts, upcoming) | `GET /home` · optional `?hostelId=` |
 | Home · availability | Hostel switch + free-now | `GET /me/hostels`, `GET /hostels/{id}/availability/now` |
 | Book · machine list | Washers / dryers | `GET /hostels/{id}/machines?kind=` |
 | Machine detail / offline | Card + offline state | `GET /machines/{id}` |

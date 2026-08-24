@@ -226,6 +226,9 @@ class AuthAPITests(APITestCase):
         mock_send.assert_called_once()
         self.assertTrue(mock_send.call_args.kwargs["otp"].isdigit())
         self.assertTrue(mock_send.call_args.kwargs["token"])
+        self.assertEqual(mock_send.call_args.kwargs["name"], "Aarav Mehta")
+        self.assertEqual(mock_send.call_args.kwargs["email"], "aarav.mehta@gim.ac.in")
+        self.assertEqual(mock_send.call_args.kwargs["to"], "aarav.mehta@gim.ac.in")
 
     def test_signup_options_lists_hostels(self):
         response = self.client.get("/api/v1/auth/signup-options")
@@ -316,6 +319,42 @@ class AuthAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         mock_send.assert_called_once()
         self.assertEqual(mock_send.call_args.kwargs["to"], "aarav.mehta@gim.ac.in")
+        self.assertEqual(mock_send.call_args.kwargs["name"], "Aarav Mehta")
+
+    @patch("base.tasks.send_login_otp_email", return_value=True)
+    def test_login_request_otp_admin_with_password_sends_email(self, mock_send):
+        user, _ = self._create_administrator()
+        response = self.client.post(
+            "/api/v1/auth/login/request-otp",
+            {"email": user.email, "password": self.password},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        mock_send.assert_called_once()
+        self.assertEqual(mock_send.call_args.kwargs["to"], user.email)
+        self.assertEqual(mock_send.call_args.kwargs["name"], "Committee")
+
+    @patch("base.tasks.send_login_otp_email", return_value=True)
+    def test_login_request_otp_admin_wrong_password_sends_no_email(self, mock_send):
+        user, _ = self._create_administrator()
+        response = self.client.post(
+            "/api/v1/auth/login/request-otp",
+            {"email": user.email, "password": "Wrong-Pass-9!"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        mock_send.assert_not_called()
+
+    @patch("base.tasks.send_login_otp_email", return_value=True)
+    def test_login_request_otp_student_with_password_sends_no_email(self, mock_send):
+        user, _ = self._create_student()
+        response = self.client.post(
+            "/api/v1/auth/login/request-otp",
+            {"email": user.email, "password": self.password},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        mock_send.assert_not_called()
 
     @patch("base.tasks.send_login_otp_email", return_value=True)
     def test_login_verify_otp_issues_jwt_for_admin(self, mock_send):
@@ -471,6 +510,9 @@ class AuthAPITests(APITestCase):
         )
         otp = mock_send.call_args.kwargs["otp"]
         token = mock_send.call_args.kwargs["token"]
+        self.assertEqual(mock_send.call_args.kwargs["name"], "Aarav Mehta")
+        self.assertEqual(mock_send.call_args.kwargs["email"], user.email)
+        self.assertEqual(mock_send.call_args.kwargs["to"], user.email)
 
         via_otp = self.client.post(
             "/api/v1/auth/verify-email",
@@ -549,6 +591,19 @@ class AuthAPITests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         mock_send.assert_not_called()
+
+    @override_settings(ADMIN_FRONTEND_URL="https://admin.lundrii.test")
+    @patch("authentication.views.send_password_reset_email_with_token", return_value=True)
+    def test_forgot_admin_uses_admin_frontend_reset_link(self, mock_send):
+        user, _ = self._create_administrator()
+        response = self.client.post(
+            "/api/v1/auth/forgot-password",
+            {"email": user.email},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        mock_send.assert_called_once()
+        self.assertTrue(mock_send.call_args.kwargs["is_admin"])
 
     @patch("base.tasks.send_password_reset_email_with_token", return_value=True)
     def test_reset_via_otp(self, mock_send):

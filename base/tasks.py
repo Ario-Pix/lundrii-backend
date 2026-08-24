@@ -24,6 +24,7 @@ import logging
 from django.tasks import task
 
 from base.email import (
+    send_booking_confirmed_email,
     send_login_otp_email,
     send_password_reset_email_with_token,
     send_verify_email_with_token,
@@ -33,18 +34,45 @@ logger = logging.getLogger(__name__)
 
 
 @task
-def send_login_otp_email_task(*, to: str, otp: str) -> bool:
-    """Email an admin their one-time login code."""
-    return send_login_otp_email(to=to, otp=otp)
+def send_login_otp_email_task(*, to: str, otp: str, name: str = "") -> bool:
+    """Email a one-time login code."""
+    return send_login_otp_email(to=to, otp=otp, name=name)
 
 
 @task
-def send_verify_email_task(*, to: str, otp: str, token: str) -> bool:
+def send_verify_email_task(
+    *, to: str, otp: str, token: str, name: str = "", email: str = ""
+) -> bool:
     """Email an email-verification code plus its one-time deep link."""
-    return send_verify_email_with_token(to=to, otp=otp, token=token)
+    return send_verify_email_with_token(
+        to=to, otp=otp, token=token, name=name, email=email or to
+    )
 
 
 @task
-def send_password_reset_email_task(*, to: str, otp: str, token: str) -> bool:
+def send_password_reset_email_task(
+    *, to: str, otp: str, token: str, name: str = ""
+) -> bool:
     """Email a password-reset code plus its one-time deep link."""
-    return send_password_reset_email_with_token(to=to, otp=otp, token=token)
+    return send_password_reset_email_with_token(
+        to=to, otp=otp, token=token, name=name
+    )
+
+
+@task
+def send_booking_confirmed_email_task(
+    *,
+    to: str,
+    name: str = "",
+    machine: str,
+    hostel: str,
+    when: str,
+) -> bool:
+    """Email a booking confirmation receipt after a successful create."""
+    return send_booking_confirmed_email(
+        to=to,
+        name=name,
+        machine=machine,
+        hostel=hostel,
+        when=when,
+    )

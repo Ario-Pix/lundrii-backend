@@ -25,6 +25,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from base.tasks import (
+    send_booking_confirmed_email_task,
     send_login_otp_email_task,
     send_password_reset_email_task,
     send_verify_email_task,
@@ -35,6 +36,7 @@ ALL_TASKS = (
     send_login_otp_email_task,
     send_verify_email_task,
     send_password_reset_email_task,
+    send_booking_confirmed_email_task,
 )
 
 DUMMY_TASKS = {"default": {"BACKEND": "django.tasks.backends.dummy.DummyBackend"}}
@@ -83,7 +85,7 @@ class ImmediateExecutionTests(SimpleTestCase):
                 to="committee@gim.ac.in", otp="123456"
             )
 
-        send.assert_called_once_with(to="committee@gim.ac.in", otp="123456")
+        send.assert_called_once_with(to="committee@gim.ac.in", otp="123456", name="")
         self.assertEqual(result.status, TaskResultStatus.SUCCESSFUL)
         self.assertIs(result.is_finished, True)
         self.assertIs(result.return_value, True)
@@ -94,12 +96,22 @@ class ImmediateExecutionTests(SimpleTestCase):
     def test_arguments_are_carried_on_the_result(self):
         with patch("base.tasks.send_verify_email_with_token", return_value=True):
             result = send_verify_email_task.enqueue(
-                to="aarav@gim.ac.in", otp="654321", token="tok-abc"
+                to="aarav@gim.ac.in",
+                otp="654321",
+                token="tok-abc",
+                name="Aarav Mehta",
+                email="aarav@gim.ac.in",
             )
         self.assertEqual(result.args, [])
         self.assertEqual(
             result.kwargs,
-            {"to": "aarav@gim.ac.in", "otp": "654321", "token": "tok-abc"},
+            {
+                "to": "aarav@gim.ac.in",
+                "otp": "654321",
+                "token": "tok-abc",
+                "name": "Aarav Mehta",
+                "email": "aarav@gim.ac.in",
+            },
         )
 
     def test_raising_task_is_captured_not_propagated(self):
@@ -201,6 +213,8 @@ class ViewsEnqueueTasksTests(APITestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].task.module_path, send_verify_email_task.module_path)
         self.assertEqual(results[0].kwargs["to"], "aarav.mehta@gim.ac.in")
+        self.assertEqual(results[0].kwargs["name"], "Aarav Mehta")
+        self.assertEqual(results[0].kwargs["email"], "aarav.mehta@gim.ac.in")
         self.assertTrue(results[0].kwargs["otp"].isdigit())
         self.assertTrue(results[0].kwargs["token"])
 
@@ -218,6 +232,7 @@ class ViewsEnqueueTasksTests(APITestCase):
         self.assertEqual(
             results[0].task.module_path, send_password_reset_email_task.module_path
         )
+        self.assertEqual(results[0].kwargs["name"], "Aarav Mehta")
 
     @override_settings(TASKS=DUMMY_TASKS)
     def test_admin_otp_request_enqueues_a_login_task(self):
@@ -233,6 +248,7 @@ class ViewsEnqueueTasksTests(APITestCase):
         self.assertEqual(
             results[0].task.module_path, send_login_otp_email_task.module_path
         )
+        self.assertEqual(results[0].kwargs["name"], "Committee")
 
     def test_registration_survives_an_email_outage(self):
         """

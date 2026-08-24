@@ -199,7 +199,7 @@ class Command(BaseCommand):
                 "cooldown_hours": 0,
                 "advance_window_days": 7,
                 "cancellation_cutoff_hours": 6,
-                "dryer_cap_enabled": False,
+                "dryer_cap_enabled": True,
                 "is_active": True,
             },
         )
@@ -258,7 +258,7 @@ class Command(BaseCommand):
         self.stdout.write(f"Institute:  {INSTITUTE_NAME}")
         self.stdout.write(f"Domains:    {', '.join(ALLOWED_DOMAINS)}")
         self.stdout.write(
-            "Rules:      quota 3/7d · advance 7d · cancel cutoff 6h · dryer_cap off"
+            "Rules:      quota 3/7d · dryer cap 3/7d · advance 7d · cancel cutoff 6h"
         )
         self.stdout.write(f"Hostels:    {hostel_count} active ({', '.join(GIM_HOSTEL_NAMES)})")
         self.stdout.write(

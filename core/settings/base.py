@@ -89,7 +89,7 @@ ASGI_APPLICATION = "core.asgi.application"
 # booking.py does the same job natively.
 #
 # Production (Railway): set DATABASE_URL to a postgres/postgresql URL.
-# Local and tests keep SQLite when DATABASE_URL is unset.
+# Local keeps SQLite when DATABASE_URL is unset. Tests always pin SQLite.
 # ---------------------------------------------------------------------------
 _DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 
@@ -101,10 +101,13 @@ def _postgres_from_url(url: str) -> dict:
             "DATABASE_URL must be a postgres:// or postgresql:// URL."
         )
     query = parse_qs(parsed.query)
+    # urlparse keeps these on the query string; Django's postgres backend only
+    # sees them if we copy them into OPTIONS (Neon needs both).
     options = {}
-    sslmode = (query.get("sslmode") or [None])[0]
-    if sslmode:
-        options["sslmode"] = sslmode
+    for key in ("sslmode", "channel_binding"):
+        value = (query.get(key) or [None])[0]
+        if value:
+            options[key] = value
     return {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": unquote(parsed.path.lstrip("/")),
@@ -113,6 +116,7 @@ def _postgres_from_url(url: str) -> dict:
         "HOST": parsed.hostname or "",
         "PORT": str(parsed.port or 5432),
         "CONN_MAX_AGE": 60,
+        "CONN_HEALTH_CHECKS": True,
         "OPTIONS": options,
     }
 
@@ -288,12 +292,8 @@ REST_FRAMEWORK = {
 }
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(
-        minutes=int(os.getenv("JWT_ACCESS_MINUTES", "60"))
-    ),
-    "REFRESH_TOKEN_LIFETIME": timedelta(
-        days=int(os.getenv("JWT_REFRESH_DAYS", "7"))
-    ),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": False,
     "BLACKLIST_AFTER_ROTATION": False,
     "UPDATE_LAST_LOGIN": False,
@@ -359,15 +359,15 @@ RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "").strip()
 MCP_PUBLIC_URL = os.getenv("MCP_PUBLIC_URL", "").strip().rstrip("/")
 
 # Auth cache TTLs / limits (OTP + one-time links live in CACHES, not DB)
-OTP_TTL_SECONDS = int(os.getenv("OTP_TTL_SECONDS", "600"))  # login OTP, 10 min
-OTP_VERIFY_TTL_SECONDS = int(os.getenv("OTP_VERIFY_TTL_SECONDS", "1800"))  # 30 min
-OTP_RESET_TTL_SECONDS = int(os.getenv("OTP_RESET_TTL_SECONDS", "3600"))  # 1 h
-VERIFY_LINK_TTL_SECONDS = int(os.getenv("VERIFY_LINK_TTL_SECONDS", "1800"))  # 30 min
-RESET_LINK_TTL_SECONDS = int(os.getenv("RESET_LINK_TTL_SECONDS", "3600"))  # 1 h
-OTP_MAX_ATTEMPTS = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
-OTP_RATE_LIMIT_MAX = int(os.getenv("OTP_RATE_LIMIT_MAX", "5"))
-OTP_RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("OTP_RATE_LIMIT_WINDOW_SECONDS", "900"))
-OTP_COOLDOWN_SECONDS = int(os.getenv("OTP_COOLDOWN_SECONDS", "60"))
+OTP_TTL_SECONDS = 600  # login OTP, 10 min
+OTP_VERIFY_TTL_SECONDS = 1800  # 30 min
+OTP_RESET_TTL_SECONDS = 3600  # 1 h
+VERIFY_LINK_TTL_SECONDS = 1800  # 30 min
+RESET_LINK_TTL_SECONDS = 3600  # 1 h
+OTP_MAX_ATTEMPTS = 5
+OTP_RATE_LIMIT_MAX = 5
+OTP_RATE_LIMIT_WINDOW_SECONDS = 900
+OTP_COOLDOWN_SECONDS = 60
 
 # ---------------------------------------------------------------------------
 # Cloudinary (ticket photos)

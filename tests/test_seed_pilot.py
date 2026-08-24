@@ -37,7 +37,7 @@ class SeedPilotCommandTests(TestCase):
         self.assertEqual(rules.cooldown_hours, 0)
         self.assertEqual(rules.advance_window_days, 7)
         self.assertEqual(rules.cancellation_cutoff_hours, 6)
-        self.assertFalse(rules.dryer_cap_enabled)
+        self.assertTrue(rules.dryer_cap_enabled)
 
         self.assertEqual(
             Hostel.objects.filter(institute=institute, is_active=True).count(), 11

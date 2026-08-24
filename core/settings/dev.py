@@ -13,8 +13,11 @@ ALLOWED_HOSTS = ["localhost", "127.0.0.1", "10.0.2.2", "0.0.0.0"]
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
 ]
 FRONTEND_URL = "http://localhost:3000"
+ADMIN_FRONTEND_URL = "http://localhost:3001"
 
 CACHE_BACKEND = os.getenv("CACHE_BACKEND", "locmem")
 CACHES = build_caches(CACHE_BACKEND)

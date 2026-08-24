@@ -1,0 +1,21 @@
+{% extends "emails/base.html" %}
+{% block title %}Your laundry slot is booked{% endblock %}
+{% block preheader %}{{ machine }} at {{ hostel }} · {{ when }}{% endblock %}
+{% block heading %}
+<p style="margin:0 0 8px 0;font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#9095a3;">Booking</p>
+<p style="margin:0 0 12px 0;font-size:22px;font-weight:700;letter-spacing:-0.03em;line-height:1.25;color:#0a1533;">Slot confirmed</p>
+{% endblock %}
+{% block content %}
+<p style="margin:0 0 8px 0;color:#5c6370;">Hi {{ name }},</p>
+<p style="margin:0 0 24px 0;color:#5c6370;">Your laundry slot is booked. Details below.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 8px 0;background-color:#f3f4f6;border-radius:14px;">
+  <tr>
+    <td style="padding:16px 20px;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;line-height:1.55;color:#0a1533;">
+      <p style="margin:0 0 10px 0;"><span style="color:#9095a3;font-size:12px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;">Machine</span><br>{{ machine }}</p>
+      <p style="margin:0 0 10px 0;"><span style="color:#9095a3;font-size:12px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;">Hostel</span><br>{{ hostel }}</p>
+      <p style="margin:0;"><span style="color:#9095a3;font-size:12px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;">When</span><br>{{ when }}</p>
+    </td>
+  </tr>
+</table>
+{% endblock %}
+{% block footer %}You received this because you booked a laundry slot on Lundrii.{% endblock %}

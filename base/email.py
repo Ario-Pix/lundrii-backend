@@ -4,6 +4,7 @@ Email abstraction: Resend HTTPS when RESEND_API_KEY is set, else console.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import sys
@@ -28,12 +29,65 @@ def _running_tests() -> bool:
 
 
 def _from_address() -> str:
+    """Return a configured From, or empty when neither env alias is set.
+
+    Does not fall back to noreply@lundrii.app. Callers that talk to Resend
+    must treat an empty result as a configuration error.
+    """
     raw = (getattr(settings, "EMAIL_FROM", "") or "").strip()
     if not raw:
-        raw = "Lundrii <noreply@lundrii.app>"
+        raw = (getattr(settings, "RESEND_FROM_EMAIL", "") or "").strip()
+    if not raw:
+        return ""
     if "<" not in raw and "@" in raw:
         return f"Lundrii <{raw}>"
     return raw
+
+
+def _as_mapping(response: object) -> dict:
+    if response is None:
+        return {}
+    if isinstance(response, dict):
+        return dict(response)
+    dumped = getattr(response, "model_dump", None)
+    if callable(dumped):
+        try:
+            data = dumped()
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
+    data: dict = {}
+    for key in ("id", "error", "message", "name", "statusCode"):
+        if hasattr(response, key):
+            try:
+                data[key] = getattr(response, key)
+            except Exception:
+                continue
+    return data
+
+
+def _format_resend_detail(value: object) -> str:
+    if isinstance(value, (dict, list)):
+        try:
+            return json.dumps(value)
+        except (TypeError, ValueError):
+            return str(value)
+    return str(value)
+
+
+def _interpret_resend_response(response: object) -> tuple[bool, str]:
+    """Success only when Resend returned an id and no error payload."""
+    data = _as_mapping(response)
+    error = data.get("error")
+    if error not in (None, "", {}, []):
+        return False, _format_resend_detail(error)
+    email_id = data.get("id")
+    if email_id:
+        return True, str(email_id)
+    if response is None:
+        return False, "empty Resend response"
+    return False, _format_resend_detail(data or response)
 
 
 def announce_otp(*, to: str, otp: str, purpose: str = "", subject: str = "") -> None:
@@ -99,7 +153,6 @@ def send_email(*, to: str, subject: str, html: str, text: str | None = None) -> 
 
     Returns True on success (or console fallback), False on Resend failure.
     """
-    from_addr = _from_address()
     api_key = getattr(settings, "RESEND_API_KEY", "") or ""
     body = text or html
     codes = _OTP_RE.findall(body or "")
@@ -109,6 +162,15 @@ def send_email(*, to: str, subject: str, html: str, text: str | None = None) -> 
     if not api_key:
         _console_deliver(to=to, subject=subject, body=body)
         return True
+
+    from_addr = _from_address()
+    if not from_addr:
+        logger.error(
+            "RESEND_API_KEY is set but EMAIL_FROM / RESEND_FROM_EMAIL is empty; "
+            "refusing silent fallback to noreply@lundrii.app (to=%s)",
+            to,
+        )
+        return False
 
     try:
         import resend
@@ -122,15 +184,25 @@ def send_email(*, to: str, subject: str, html: str, text: str | None = None) -> 
         }
         if text:
             params["text"] = text
-        resend.Emails.send(params)
-        return True
+        response = resend.Emails.send(params)
     except Exception:
         logger.exception("Failed to send email via Resend to %s (from=%s)", to, from_addr)
         return False
 
+    ok, detail = _interpret_resend_response(response)
+    if ok:
+        logger.info("[email:resend] to=%s from=%s id=%s", to, from_addr, detail)
+        return True
+    logger.error("[email:resend] to=%s from=%s error=%s", to, from_addr, detail)
+    return False
+
 
 def frontend_url() -> str:
     return getattr(settings, "FRONTEND_URL", "http://localhost:3000").rstrip("/")
+
+
+def admin_frontend_url() -> str:
+    return getattr(settings, "ADMIN_FRONTEND_URL", frontend_url()).rstrip("/")
 
 
 def build_verify_email_link(token: str) -> str:
@@ -138,40 +210,119 @@ def build_verify_email_link(token: str) -> str:
     return f"{frontend_url()}/auth/verify?token={token}"
 
 
-def build_reset_password_link(token: str) -> str:
+def build_reset_password_link(token: str, *, is_admin: bool = False) -> str:
     """Deep link for password reset (`/auth/reset?token=`)."""
-    return f"{frontend_url()}/auth/reset?token={token}"
+    origin = admin_frontend_url() if is_admin else frontend_url()
+    return f"{origin}/auth/reset?token={token}"
 
 
 def _render_email(name: str, context: dict) -> tuple[str, str]:
+    # No request → Context, not RequestContext. Auth context processors
+    # (and template `user`) cannot leak into the body.
     html = render_to_string(f"emails/{name}.html", context)
     text = render_to_string(f"emails/{name}.txt", context)
     return html, text
 
 
-def send_login_otp_email(*, to: str, otp: str) -> bool:
-    subject = "Your Lundrii login code"
-    html, text = _render_email("login_otp", {"otp": otp})
+def resolve_email_name(*, name: str | None = None, email: str | None = None) -> str:
+    """
+    Greeting name for email copy.
+
+    Prefer a real display name; otherwise the email local-part; otherwise
+    ``there`` so templates can safely say ``Hi {{ name }},``.
+    """
+    cleaned = (name or "").strip()
+    if cleaned:
+        return cleaned
+    local = ((email or "").split("@", 1)[0] or "").strip()
+    if local:
+        return local
+    return "there"
+
+
+def personalized_subject(base: str, name: str) -> str:
+    """Prefix ``base`` with the greeting name when it is more than a fallback."""
+    cleaned = (name or "").strip()
+    if not cleaned or cleaned == "there":
+        return base
+    if not base:
+        return cleaned
+    return f"{cleaned}, {base[0].lower()}{base[1:]}"
+
+
+def send_login_otp_email(*, to: str, otp: str, name: str = "") -> bool:
+    greeting = resolve_email_name(name=name, email=to)
+    subject = personalized_subject("Your Lundrii login code", greeting)
+    html, text = _render_email("login_otp", {"otp": otp, "name": greeting})
     return send_email(to=to, subject=subject, html=html, text=text)
 
 
-def send_verify_email(*, to: str, otp: str, link: str) -> bool:
-    subject = "Verify your Lundrii email"
-    html, text = _render_email("verify_email", {"otp": otp, "link": link})
+def send_verify_email(
+    *, to: str, otp: str, link: str, name: str = "", email: str = ""
+) -> bool:
+    """Render verify mail with a greeting name + address, never template `user`."""
+    address = (email or to or "").strip()
+    greeting = resolve_email_name(name=name, email=address or to)
+    subject = personalized_subject("Verify your Lundrii email", greeting)
+    html, text = _render_email(
+        "verify_email",
+        {"otp": otp, "link": link, "name": greeting, "email": address},
+    )
     return send_email(to=to, subject=subject, html=html, text=text)
 
 
-def send_password_reset_email(*, to: str, otp: str, link: str) -> bool:
-    subject = "Reset your Lundrii password"
-    html, text = _render_email("password_reset", {"otp": otp, "link": link})
+def send_password_reset_email(*, to: str, otp: str, link: str, name: str = "") -> bool:
+    greeting = resolve_email_name(name=name, email=to)
+    subject = personalized_subject("Reset your Lundrii password", greeting)
+    html, text = _render_email(
+        "password_reset", {"otp": otp, "link": link, "name": greeting}
+    )
     return send_email(to=to, subject=subject, html=html, text=text)
 
 
-def send_verify_email_with_token(*, to: str, otp: str, token: str) -> bool:
+def send_verify_email_with_token(
+    *, to: str, otp: str, token: str, name: str = "", email: str = ""
+) -> bool:
     """Wave 2a helper: build verify URL from a cached one-time token."""
-    return send_verify_email(to=to, otp=otp, link=build_verify_email_link(token))
+    return send_verify_email(
+        to=to,
+        otp=otp,
+        link=build_verify_email_link(token),
+        name=name,
+        email=email or to,
+    )
 
 
-def send_password_reset_email_with_token(*, to: str, otp: str, token: str) -> bool:
+def send_password_reset_email_with_token(
+    *, to: str, otp: str, token: str, is_admin: bool = False, name: str = ""
+) -> bool:
     """Wave 2a helper: build reset URL from a cached one-time token."""
-    return send_password_reset_email(to=to, otp=otp, link=build_reset_password_link(token))
+    return send_password_reset_email(
+        to=to,
+        otp=otp,
+        link=build_reset_password_link(token, is_admin=is_admin),
+        name=name,
+    )
+
+
+def send_booking_confirmed_email(
+    *,
+    to: str,
+    name: str = "",
+    machine: str,
+    hostel: str,
+    when: str,
+) -> bool:
+    """Transactional receipt after a successful booking create."""
+    greeting = resolve_email_name(name=name, email=to)
+    subject = personalized_subject("Your laundry slot is booked", greeting)
+    html, text = _render_email(
+        "booking_confirmed",
+        {
+            "name": greeting,
+            "machine": machine,
+            "hostel": hostel,
+            "when": when,
+        },
+    )
+    return send_email(to=to, subject=subject, html=html, text=text)

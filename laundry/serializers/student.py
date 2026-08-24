@@ -263,6 +263,7 @@ class QuotaSerializer(serializers.Serializer):
     used = serializers.IntegerField()
     limit = serializers.IntegerField()
     dryerUsed = serializers.IntegerField()
+    dryerLimit = serializers.IntegerField()
     windowDays = serializers.IntegerField()
     resetsAt = serializers.DateTimeField(allow_null=True)
 
@@ -309,6 +310,7 @@ class MeSerializer(serializers.Serializer):
                 "used": quota["used"],
                 "limit": quota["limit"],
                 "dryerUsed": quota["dryer_used"],
+                "dryerLimit": quota["dryer_limit"],
                 "windowDays": quota["window_days"],
                 "resetsAt": quota["resets_at"],
             },
@@ -392,6 +394,23 @@ class EligibleHostelSerializer(serializers.Serializer):
                 student.home_hostel_id and hostel.id == student.home_hostel_id
             ),
         }
+
+    @classmethod
+    def public(cls, hostel: Hostel) -> dict:
+        return {"id": hostel.id, "name": hostel.name, "isHome": False}
+
+
+class HomeSerializer(serializers.Serializer):
+    """GET /home bootstrap payload for guest and signed-in Home."""
+
+    profile = MeSerializer(allow_null=True)
+    hostels = EligibleHostelSerializer(many=True)
+    selectedHostelId = serializers.UUIDField(allow_null=True)
+    machines = MachineCardSerializer(many=True)
+    washersFree = serializers.IntegerField()
+    washersTotal = serializers.IntegerField()
+    upcoming = BookingSerializer(many=True)
+    pendingIncomingExchangeCount = serializers.IntegerField()
 
 
 class InstituteRulesPublicSerializer(serializers.Serializer):

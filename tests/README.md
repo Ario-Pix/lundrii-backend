@@ -31,6 +31,7 @@ While iterating, narrow to one module or one test:
 | `test_exchanges.py` | Exchange request and swap, approve, reject, withdraw, and the eligibility rules behind them |
 | `test_tickets.py` | Student ticket create (machine-not-working only; conflict kind rejected), multipart photo, list, detail, S3 failure handling, and mutation permissions |
 | `test_me_notifications.py` | `/me`, `/me/hostels`, `/me/institute`, standing/quota/strike display, notification list, read, read-all, and preferences |
+| `test_home.py` | `GET /home` bootstrap: signed-in vs guest, washer counts, `hostelId` switch, ineligible 404, pending incoming exchanges |
 | `test_admin_crud.py` | Admin portal CRUD — institutes, hostels, machines, rules, students (create, CSV import, promote, send reset link), strikes, suspensions, tickets |
 | `test_admin_bookings.py` | Admin bookings grid, booking detail, admin cancel, day CSV export, and the demand / weekday / channel-share analytics |
 | `test_mcp.py` | The MCP connector: token issue/revoke/expiry, bearer auth on `/mcp/`, the JSON-RPC handshake, all four booking tools, that institute rules (quota, cooldown, suspension, hostel scope) apply to a chat booking exactly as in-app, and that one student's token can never see or touch another's bookings |
