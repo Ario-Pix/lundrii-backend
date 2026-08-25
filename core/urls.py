@@ -24,6 +24,12 @@ urlpatterns = [
         oauth_views.ProtectedResourceMetadata.as_view(),
         name="oauth-protected-resource-metadata",
     ),
+    # RFC 9728 path insertion: clients that take resource `…/mcp/` look here.
+    path(
+        ".well-known/oauth-protected-resource/mcp",
+        oauth_views.ProtectedResourceMetadata.as_view(),
+        name="oauth-protected-resource-metadata-mcp",
+    ),
     path(
         ".well-known/oauth-authorization-server",
         oauth_views.AuthorizationServerMetadata.as_view(),

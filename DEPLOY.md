@@ -40,7 +40,7 @@ Do not put real secrets in this file. Generate `SECRET_KEY` yourself and paste i
 
 **Do not set:** `ALLOWED_HOSTS`, `CORS_ORIGINS`, `FRONTEND_URL`.
 
-Optional: `WEB_CONCURRENCY` (default `1`; Postgres can use `2+`), `TASKS_BACKEND`, JWT/OTP tunables (see `.env.example`).
+Optional: `WEB_CONCURRENCY` (default `1`; Postgres can use `2+`), `TASKS_BACKEND`, JWT/OTP tunables (see `.env.example`), `MCP_PUBLIC_URL` (defaults to `https://lundrii-backend-production.up.railway.app` so ChatGPT/Claude get a stable MCP origin).
 
 Any `https://*.vercel.app` origin is already allowed for CORS via regex in `core/settings/base.py`.
 

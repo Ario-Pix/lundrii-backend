@@ -126,6 +126,8 @@ class RouteInventoryTests(SimpleTestCase):
             "student-assistant-connections",
             # MCP connector endpoint (JSON-RPC, not under /api/v1).
             "mcp-endpoint",
+            "oauth-protected-resource-metadata",
+            "oauth-protected-resource-metadata-mcp",
             # Admin
             "admin-me",
             "admin-profile",

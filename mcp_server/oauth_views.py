@@ -45,6 +45,11 @@ from mcp_server.models import (
     OAuthRefreshToken,
 )
 from mcp_server.oauth_models import ACCESS_TOKEN_TTL_SECONDS
+from mcp_server.providers import (
+    issuer_for_request,
+    mcp_url_for_request,
+    resource_is_allowed,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,10 +57,6 @@ SUPPORTED_RESPONSE_TYPES = ["code"]
 SUPPORTED_GRANT_TYPES = ["authorization_code", "refresh_token"]
 # S256 only. OAuth 2.1 removes "plain", which offers no protection at all.
 SUPPORTED_CODE_CHALLENGE_METHODS = ["S256"]
-
-
-def _issuer(request) -> str:
-    return f"{request.scheme}://{request.get_host()}"
 
 
 def _oauth_error(error: str, description: str, http_status: int = 400) -> JsonResponse:
@@ -91,10 +92,10 @@ class ProtectedResourceMetadata(View):
     """RFC 9728 — tells a client which authorization server guards /mcp/."""
 
     def get(self, request):
-        issuer = _issuer(request)
+        issuer = issuer_for_request(request)
         return JsonResponse(
             {
-                "resource": f"{issuer}/mcp/",
+                "resource": mcp_url_for_request(request),
                 "authorization_servers": [issuer],
                 "scopes_supported": [MCP_SCOPE],
                 "bearer_methods_supported": ["header"],
@@ -106,7 +107,7 @@ class AuthorizationServerMetadata(View):
     """RFC 8414 — the endpoint map a connector reads before doing anything."""
 
     def get(self, request):
-        issuer = _issuer(request)
+        issuer = issuer_for_request(request)
         return JsonResponse(
             {
                 "issuer": issuer,
@@ -118,6 +119,7 @@ class AuthorizationServerMetadata(View):
                 "code_challenge_methods_supported": SUPPORTED_CODE_CHALLENGE_METHODS,
                 "token_endpoint_auth_methods_supported": ["none"],
                 "scopes_supported": [MCP_SCOPE],
+                "resource_parameter_supported": True,
             }
         )
 
@@ -199,13 +201,13 @@ class Authorize(View):
     template = "mcp_server/authorize.html"
 
     def get(self, request):
-        context = self._validate(request.GET)
+        context = self._validate(request, request.GET)
         if isinstance(context, HttpResponse):
             return context
         return render(request, self.template, context)
 
     def post(self, request):
-        context = self._validate(request.POST)
+        context = self._validate(request, request.POST)
         if isinstance(context, HttpResponse):
             return context
 
@@ -251,7 +253,7 @@ class Authorize(View):
             f"{context['redirect_uri']}{joiner}{urlencode(params)}"
         )
 
-    def _validate(self, data):
+    def _validate(self, request, data):
         """
         Returns a template context dict, or a finished HttpResponse.
 
@@ -261,6 +263,7 @@ class Authorize(View):
         client_id = data.get("client_id")
         redirect_uri = data.get("redirect_uri")
         state = data.get("state") or ""
+        resource = (data.get("resource") or "").strip()
 
         client = OAuthClient.objects.filter(client_id=client_id, is_active=True).first()
         if client is None:
@@ -289,6 +292,13 @@ class Authorize(View):
             return _redirect_with_error(
                 redirect_uri, "invalid_request", "code_challenge is required.", state
             )
+        if not resource_is_allowed(request, resource):
+            return _redirect_with_error(
+                redirect_uri,
+                "invalid_target",
+                "resource does not match this MCP server.",
+                state,
+            )
 
         return {
             "client": client,
@@ -299,6 +309,7 @@ class Authorize(View):
             "code_challenge": code_challenge,
             "code_challenge_method": "S256",
             "scope": MCP_SCOPE,
+            "resource": resource,
             "error": None,
         }
 
@@ -308,25 +319,46 @@ class Authorize(View):
 # ---------------------------------------------------------------------------
 
 
+def _token_params(request):
+    """Form-encoded is the RFC 6749 default; JSON is accepted for MCP clients."""
+    if request.POST:
+        return request.POST
+    content_type = request.content_type or ""
+    if "json" in content_type:
+        try:
+            payload = json.loads(request.body or b"{}")
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return {}
+        if isinstance(payload, dict):
+            return payload
+    return {}
+
+
 @method_decorator(csrf_exempt, name="dispatch")
 class Token(View):
     """Exchange a code (or a refresh token) for an MCP access token."""
 
     def post(self, request):
-        grant_type = request.POST.get("grant_type")
+        params = _token_params(request)
+        grant_type = params.get("grant_type")
+        resource = (params.get("resource") or "").strip()
+        if resource and not resource_is_allowed(request, resource):
+            return _oauth_error(
+                "invalid_target", "resource does not match this MCP server."
+            )
         if grant_type == "authorization_code":
-            return self._authorization_code(request)
+            return self._authorization_code(params)
         if grant_type == "refresh_token":
-            return self._refresh(request)
+            return self._refresh(params)
         return _oauth_error(
             "unsupported_grant_type", f"Unsupported grant_type {grant_type!r}."
         )
 
-    def _authorization_code(self, request):
-        code = request.POST.get("code")
-        verifier = request.POST.get("code_verifier")
-        client_id = request.POST.get("client_id")
-        redirect_uri = request.POST.get("redirect_uri")
+    def _authorization_code(self, params):
+        code = params.get("code")
+        verifier = params.get("code_verifier")
+        client_id = params.get("client_id")
+        redirect_uri = params.get("redirect_uri")
 
         row = OAuthAuthorizationCode.resolve(code)
         if row is None:
@@ -362,9 +394,9 @@ class Token(View):
             row.consume()
             return self._issue(row.client, row.student, row.scope)
 
-    def _refresh(self, request):
-        presented = request.POST.get("refresh_token")
-        client_id = request.POST.get("client_id")
+    def _refresh(self, params):
+        presented = params.get("refresh_token")
+        client_id = params.get("client_id")
 
         row = OAuthRefreshToken.resolve(presented)
         if row is None:

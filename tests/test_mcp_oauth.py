@@ -15,7 +15,7 @@ from datetime import time, timedelta
 from urllib.parse import parse_qs, urlparse
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 from rest_framework import status
 
@@ -37,6 +37,7 @@ from mcp_server.models import (
     OAuthRefreshToken,
 )
 from mcp_server.oauth_views import verify_pkce
+from mcp_server.providers import resource_is_allowed
 
 User = get_user_model()
 
@@ -200,6 +201,46 @@ class DiscoveryTests(OAuthWorldMixin, TestCase):
             response.headers["WWW-Authenticate"],
         )
 
+    def test_protected_resource_metadata_path_insertion(self):
+        """RFC 9728: clients that take resource `…/mcp/` look under /mcp."""
+        root = self.client.get("/.well-known/oauth-protected-resource").json()
+        nested = self.client.get("/.well-known/oauth-protected-resource/mcp").json()
+        self.assertEqual(nested, root)
+
+    def test_authorization_server_advertises_resource_parameter(self):
+        body = self.client.get("/.well-known/oauth-authorization-server").json()
+        self.assertTrue(body["resource_parameter_supported"])
+
+    @override_settings(MCP_PUBLIC_URL="https://api.lundrii.app")
+    def test_discovery_honours_public_url(self):
+        body = self.client.get("/.well-known/oauth-protected-resource").json()
+        self.assertEqual(body["resource"], "https://api.lundrii.app/mcp/")
+        self.assertEqual(body["authorization_servers"], ["https://api.lundrii.app"])
+
+    @override_settings(MCP_PUBLIC_URL="https://api.lundrii.app")
+    def test_unauthorised_challenge_uses_public_url(self):
+        response = self.client.post(
+            "/mcp/", data="{}", content_type="application/json"
+        )
+        self.assertIn(
+            "https://api.lundrii.app/.well-known/oauth-protected-resource",
+            response.headers["WWW-Authenticate"],
+        )
+
+    def test_claude_origin_can_preflight_mcp(self):
+        response = self.client.options(
+            "/mcp/",
+            HTTP_ORIGIN="https://claude.ai",
+            HTTP_ACCESS_CONTROL_REQUEST_METHOD="POST",
+            HTTP_ACCESS_CONTROL_REQUEST_HEADERS=(
+                "content-type,authorization,mcp-protocol-version"
+            ),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers.get("Access-Control-Allow-Origin"), "https://claude.ai")
+        allow = (response.headers.get("Access-Control-Allow-Headers") or "").lower()
+        self.assertIn("mcp-protocol-version", allow)
+
 
 class ClientRegistrationTests(OAuthWorldMixin, TestCase):
     def setUp(self):
@@ -346,11 +387,46 @@ class AuthorizeTests(OAuthWorldMixin, TestCase):
         self.assertTrue(query["code"][0].startswith("lcod_"))
         self.assertEqual(query["state"], ["xyz-state"])
 
+    def test_matching_resource_is_accepted(self):
+        response = self.client.get(
+            "/oauth/authorize",
+            self.authorize_params(resource="http://testserver/mcp/"),
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertContains(response, 'name="resource"')
+        self.assertContains(response, "http://testserver/mcp/")
+
+    def test_mismatched_resource_is_refused(self):
+        response = self.client.get(
+            "/oauth/authorize",
+            self.authorize_params(resource="https://evil.example.com/mcp/"),
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            parse_qs(urlparse(response["Location"]).query)["error"],
+            ["invalid_target"],
+        )
+
     def test_code_is_stored_hashed(self):
         code = self.approve()
         row = OAuthAuthorizationCode.objects.get()
         self.assertNotEqual(row.code_hash, code)
         self.assertEqual(OAuthAuthorizationCode.resolve(code), row)
+
+
+class ResourceIndicatorTests(SimpleTestCase):
+    def test_missing_resource_is_allowed(self):
+        request = RequestFactory().get("/")
+        self.assertTrue(resource_is_allowed(request, None))
+        self.assertTrue(resource_is_allowed(request, ""))
+
+    @override_settings(MCP_PUBLIC_URL="https://api.lundrii.app")
+    def test_origin_and_mcp_path_both_match(self):
+        request = RequestFactory().get("/")
+        self.assertTrue(resource_is_allowed(request, "https://api.lundrii.app/mcp/"))
+        self.assertTrue(resource_is_allowed(request, "https://api.lundrii.app/mcp"))
+        self.assertTrue(resource_is_allowed(request, "https://api.lundrii.app"))
+        self.assertFalse(resource_is_allowed(request, "https://evil.example.com/mcp/"))
 
 
 class TokenExchangeTests(OAuthWorldMixin, TestCase):
@@ -370,6 +446,37 @@ class TokenExchangeTests(OAuthWorldMixin, TestCase):
         listing = self.mcp(body["access_token"])
         self.assertEqual(listing.status_code, status.HTTP_200_OK)
         self.assertEqual(len(listing.json()["result"]["tools"]), 4)
+
+    def test_matching_resource_on_token_is_accepted(self):
+        resource = "http://testserver/mcp/"
+        response = self.exchange(self.approve(resource=resource), resource=resource)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_mismatched_resource_on_token_is_refused(self):
+        response = self.exchange(
+            self.approve(), resource="https://evil.example.com/mcp/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.json()["error"], "invalid_target")
+        self.assertEqual(McpToken.objects.count(), 0)
+
+    def test_json_token_body_is_accepted(self):
+        code = self.approve()
+        response = self.client.post(
+            "/oauth/token",
+            data=json.dumps(
+                {
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "client_id": self.client_row.client_id,
+                    "redirect_uri": REDIRECT_URI,
+                    "code_verifier": self.verifier,
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.json()["access_token"].startswith("lmcp_"))
 
     def test_token_response_is_not_cacheable(self):
         response = self.exchange(self.approve())

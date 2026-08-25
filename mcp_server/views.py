@@ -31,6 +31,7 @@ from mcp_server.providers import (
     KNOWN_PROVIDER_IDS,
     connections_payload,
     disconnect_provider,
+    issuer_for_request,
 )
 from mcp_server.serializers import (
     AssistantConnectionsSerializer,
@@ -128,7 +129,7 @@ class McpEndpoint(View):
         # it can discover the authorization server and start the OAuth flow
         # itself. Without this a hosted connector has no way to know where to go.
         metadata = (
-            f"{request.scheme}://{request.get_host()}"
+            f"{issuer_for_request(request)}"
             "/.well-known/oauth-protected-resource"
         )
         response["WWW-Authenticate"] = (

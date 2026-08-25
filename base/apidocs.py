@@ -97,6 +97,8 @@ ERROR_CODES = {
     "INVALID_OTP": "The one-time code or link was wrong, expired, or already used.",
     "RATE_LIMITED": "Too many requests. Carries `retry_after` in seconds.",
     "DOMAIN_REJECTED": "That email domain is not on any institute's allow-list.",
+    "ACCOUNT_NOT_FOUND": "No student account exists for that email.",
+    "ACCOUNT_ALREADY_EXISTS": "A student account already exists for that email.",
     "CLOUDINARY_NOT_CONFIGURED": "Photo storage is not configured on this deployment.",
     "CLOUDINARY_UPLOAD_FAILED": "Cloudinary rejected the photo upload or was unreachable.",
     "S3_NOT_CONFIGURED": "Photo storage is not configured on this deployment. Alias of CLOUDINARY_NOT_CONFIGURED.",

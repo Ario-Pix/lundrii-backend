@@ -92,6 +92,23 @@ class McpUsesSharedDocsTests(SimpleTestCase):
             with self.subTest(tool=name):
                 self.assertGreater(len(note), 80)
 
+    def test_every_tool_declares_read_write_annotations(self):
+        """Claude's directory (and ChatGPT) use these to confirm write actions."""
+        readonly = {"find_available_slots", "list_my_bookings"}
+        destructive = {"cancel_booking"}
+        for descriptor in tool_descriptors():
+            with self.subTest(tool=descriptor["name"]):
+                annotations = descriptor.get("annotations") or {}
+                self.assertIn("readOnlyHint", annotations)
+                self.assertIn("destructiveHint", annotations)
+                if descriptor["name"] in readonly:
+                    self.assertTrue(annotations["readOnlyHint"])
+                    self.assertFalse(annotations["destructiveHint"])
+                else:
+                    self.assertFalse(annotations["readOnlyHint"])
+                if descriptor["name"] in destructive:
+                    self.assertTrue(annotations["destructiveHint"])
+
 
 class SwaggerUsesSharedDocsTests(TestCase):
     @staticmethod

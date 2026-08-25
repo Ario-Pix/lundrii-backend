@@ -48,11 +48,19 @@ ALLOWED_HOSTS = [
 CORS_ALLOWED_ORIGINS = [
     "https://lundrii-web-application.vercel.app",
     "https://lundrii-admin-portal.vercel.app",
+    "https://claude.ai",
+    "https://www.claude.ai",
+    "https://chatgpt.com",
+    "https://chat.openai.com",
 ]
 FRONTEND_URL = "https://lundrii-web-application.vercel.app"
 ADMIN_FRONTEND_URL = os.getenv(
     "ADMIN_FRONTEND_URL", "https://lundrii-admin-portal.vercel.app"
 )
+# Public origin ChatGPT/Claude call. Override if the API moves off Railway.
+MCP_PUBLIC_URL = os.getenv(
+    "MCP_PUBLIC_URL", "https://lundrii-backend-production.up.railway.app"
+).strip().rstrip("/")
 
 CACHE_BACKEND = os.getenv("CACHE_BACKEND", "db")
 CACHES = build_caches(CACHE_BACKEND)

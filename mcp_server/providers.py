@@ -47,7 +47,7 @@ PROVIDER_SETUP = {
         "openUrl": "https://claude.ai/settings/connectors",
         "steps": [
             "Open Claude",
-            "Settings → Connectors → add a custom connector",
+            "Settings → Connectors → Add custom connector",
             "Paste the MCP URL",
             "Approve Lundrii",
         ],
@@ -56,7 +56,7 @@ PROVIDER_SETUP = {
 
 
 def issuer_for_request(request) -> str:
-    """Same origin `_issuer` uses, with MCP_PUBLIC_URL when the proxy Host is wrong."""
+    """Public origin of this API, with MCP_PUBLIC_URL when the proxy Host is wrong."""
     public = getattr(settings, "MCP_PUBLIC_URL", "") or ""
     public = public.strip().rstrip("/")
     if public:
@@ -66,6 +66,26 @@ def issuer_for_request(request) -> str:
 
 def mcp_url_for_request(request) -> str:
     return f"{issuer_for_request(request)}/mcp/"
+
+
+def _normalize_resource(value: str) -> str:
+    return (value or "").strip().rstrip("/")
+
+
+def resource_is_allowed(request, resource: str | None) -> bool:
+    """
+    RFC 8707: hosted connectors send `resource` on authorize and token.
+
+    Missing is allowed (older clients). Present must match this server's
+    origin or `/mcp/` URL, slash-insensitive, so a client that copied either
+    form still works.
+    """
+    if resource is None or not str(resource).strip():
+        return True
+    wanted = _normalize_resource(str(resource))
+    issuer = _normalize_resource(issuer_for_request(request))
+    mcp = _normalize_resource(mcp_url_for_request(request))
+    return wanted in {issuer, mcp}
 
 
 def _host_matches(host: str, suffixes: tuple[str, ...]) -> bool:

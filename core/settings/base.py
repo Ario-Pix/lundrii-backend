@@ -231,17 +231,24 @@ TASKS = {
 # ---------------------------------------------------------------------------
 # CORS
 # ---------------------------------------------------------------------------
-# Vercel production + preview URLs (project.vercel.app, *-git-*-team.vercel.app, …).
+# Vercel production + preview URLs, plus hosted assistants that may fetch
+# discovery metadata from the browser when adding a custom connector.
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^https://[\w.-]+\.vercel\.app$",
+    r"^https://([a-z0-9-]+\.)?claude\.ai$",
+    r"^https://([a-z0-9-]+\.)?anthropic\.com$",
+    r"^https://([a-z0-9-]+\.)?chatgpt\.com$",
+    r"^https://([a-z0-9-]+\.)?openai\.com$",
 ]
 
 # Student/web clients stamp X-Client-Platform so bookings record `website`.
 # Without this, the browser preflight for register/login fails even when the
-# origin is allowed.
+# origin is allowed. MCP clients send MCP-Protocol-Version on /mcp/.
 CORS_ALLOW_HEADERS = (
     *default_headers,
     "x-client-platform",
+    "mcp-protocol-version",
+    "mcp-session-id",
 )
 
 

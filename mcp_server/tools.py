@@ -311,6 +311,11 @@ TOOLS = {
         {
             "title": "Find available laundry slots",
             "description": MCP_TOOL_NOTES["find_available_slots"],
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "openWorldHint": True,
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -347,6 +352,11 @@ TOOLS = {
         {
             "title": "Book a laundry slot",
             "description": MCP_TOOL_NOTES["book_slot"],
+            "annotations": {
+                "readOnlyHint": False,
+                "destructiveHint": False,
+                "openWorldHint": True,
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -379,6 +389,11 @@ TOOLS = {
         {
             "title": "List my upcoming bookings",
             "description": MCP_TOOL_NOTES["list_my_bookings"],
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "openWorldHint": False,
+            },
             "inputSchema": {"type": "object", "properties": {}},
         },
     ),
@@ -387,6 +402,11 @@ TOOLS = {
         {
             "title": "Cancel a booking",
             "description": MCP_TOOL_NOTES["cancel_booking"],
+            "annotations": {
+                "readOnlyHint": False,
+                "destructiveHint": True,
+                "openWorldHint": True,
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
