@@ -44,7 +44,7 @@ PROVIDER_SETUP = {
     CLAUDE: {
         "id": CLAUDE,
         "label": "Claude",
-        "openUrl": "https://claude.ai/settings/connectors",
+        "openUrl": "https://claude.ai/new?modal=add-custom-connector#settings/customize-connectors",
         "steps": [
             "Open Claude",
             "Settings → Connectors → Add custom connector",
