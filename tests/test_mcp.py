@@ -224,6 +224,41 @@ class McpAuthenticationTests(McpWorldMixin, TestCase):
         self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
         self.assertEqual(response.headers["Allow"], "POST")
 
+    def test_post_without_trailing_slash_is_not_redirected(self):
+        """
+        Hosted connectors (Claude) POST /mcp with no slash. A 301 to /mcp/
+        is followed as GET, the JSON-RPC body is dropped, and the connector
+        reports "not a valid MCP server".
+        """
+        response = self.client.post(
+            "/mcp",
+            data='{"jsonrpc":"2.0","id":1,"method":"initialize"}',
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertFalse(response.get("Location"))
+
+    def test_authenticated_post_without_trailing_slash_runs_initialize(self):
+        response = self.client.post(
+            "/mcp",
+            data=json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {
+                        "protocolVersion": protocol.LATEST_PROTOCOL_VERSION,
+                        "capabilities": {},
+                        "clientInfo": {"name": "claude", "version": "1.0"},
+                    },
+                }
+            ),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.token}",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["result"]["serverInfo"]["name"], "lundrii")
+
 
 class McpProtocolTests(McpWorldMixin, TestCase):
     def setUp(self):

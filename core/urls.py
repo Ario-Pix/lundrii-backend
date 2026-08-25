@@ -41,6 +41,10 @@ urlpatterns = [
     # MCP connector endpoint. Deliberately outside /api/v1: it speaks JSON-RPC,
     # authenticates with a connector token rather than a JWT, and is versioned
     # by the MCP protocol handshake rather than by URL.
+    # Both slash variants are registered. Claude POSTs `/mcp` (no slash);
+    # Django APPEND_SLASH would 301 that to `/mcp/` and the client follows as
+    # GET, which this view rejects — so the handshake never arrives.
+    path("mcp", McpEndpoint.as_view(), name="mcp-endpoint-bare"),
     path("mcp/", McpEndpoint.as_view(), name="mcp-endpoint"),
     # documentation
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),

@@ -126,6 +126,7 @@ class RouteInventoryTests(SimpleTestCase):
             "student-assistant-connections",
             # MCP connector endpoint (JSON-RPC, not under /api/v1).
             "mcp-endpoint",
+            "mcp-endpoint-bare",
             "oauth-protected-resource-metadata",
             "oauth-protected-resource-metadata-mcp",
             # Admin
@@ -236,12 +237,15 @@ class AnonymousAccessTests(APITestCase):
         a pass for the wrong reason. POST is the method that carries tools, so
         assert that one directly.
         """
-        response = self.client.post(
-            "/mcp/",
-            data='{"jsonrpc":"2.0","id":1,"method":"tools/list"}',
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        for path in ("/mcp", "/mcp/"):
+            with self.subTest(path=path):
+                response = self.client.post(
+                    path,
+                    data='{"jsonrpc":"2.0","id":1,"method":"tools/list"}',
+                    content_type="application/json",
+                )
+                self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+                self.assertFalse(response.get("Location"))
 
     def test_garbage_token_is_rejected(self):
         client = APIClient()
