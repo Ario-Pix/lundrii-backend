@@ -50,6 +50,8 @@ from base.tasks import (
     send_verify_email_task,
 )
 from base.exceptions import (
+    ACCOUNT_ALREADY_EXISTS,
+    ACCOUNT_NOT_FOUND,
     AUTHENTICATION_FAILED,
     DOMAIN_REJECTED,
     INVALID_OTP,
@@ -261,8 +263,9 @@ class RegisterView(APIView):
 
         if User.objects.filter(email__iexact=email).exists():
             raise APIError(
-                VALIDATION_ERROR,
+                ACCOUNT_ALREADY_EXISTS,
                 detail="An account with this email already exists.",
+                extra={"redirectTo": "login"},
             )
 
         try:
@@ -300,8 +303,9 @@ class RegisterView(APIView):
                 )
         except IntegrityError as exc:
             raise APIError(
-                VALIDATION_ERROR,
+                ACCOUNT_ALREADY_EXISTS,
                 detail="An account with this email already exists.",
+                extra={"redirectTo": "login"},
             ) from exc
 
         try:
@@ -340,10 +344,17 @@ class LoginView(APIView):
         password = ser.validated_data["password"]
 
         user = User.objects.filter(email__iexact=email).first()
-        if user is None or not user.check_password(password):
+        if user is None:
+            raise APIError(
+                ACCOUNT_NOT_FOUND,
+                detail="No account found for this email.",
+                status_code=status.HTTP_404_NOT_FOUND,
+                extra={"redirectTo": "signup"},
+            )
+        if not user.check_password(password):
             raise APIError(
                 AUTHENTICATION_FAILED,
-                detail=OPAQUE_CREDENTIALS,
+                detail="Incorrect password.",
                 status_code=status.HTTP_401_UNAUTHORIZED,
             )
         if not user.is_active:
@@ -396,10 +407,18 @@ class LoginRequestOtpView(APIView):
         record_send_or_rate_limit(email, OtpPurpose.LOGIN)
 
         user = _active_user_by_email(email)
+        if password is None and user is None:
+            raise APIError(
+                ACCOUNT_NOT_FOUND,
+                detail="No account found for this email.",
+                status_code=status.HTTP_404_NOT_FOUND,
+                extra={"redirectTo": "signup"},
+            )
+
         should_send = False
         if password is None:
             # Existing student email-only OTP flow (and legacy admin behavior).
-            should_send = user is not None and _can_login_with_otp(user)
+            should_send = _can_login_with_otp(user)
         else:
             # Admin portal flow: password is required and must match an admin user.
             should_send = (

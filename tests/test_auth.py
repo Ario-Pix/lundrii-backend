@@ -272,7 +272,8 @@ class AuthAPITests(APITestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data["code"], "VALIDATION_ERROR")
+        self.assertEqual(response.data["code"], "ACCOUNT_ALREADY_EXISTS")
+        self.assertEqual(response.data["redirectTo"], "login")
 
     def test_register_cors_preflight_allows_client_platform_header(self):
         response = self.client.options(
@@ -297,16 +298,28 @@ class AuthAPITests(APITestCase):
             {"email": "committee@gim.ac.in"},
             format="json",
         )
-        unknown = self.client.post(
+        unknown_with_password = self.client.post(
+            "/api/v1/auth/login/request-otp",
+            {"email": "nobody@gim.ac.in", "password": "Any-Pass-9!"},
+            format="json",
+        )
+        self.assertEqual(known.status_code, status.HTTP_200_OK)
+        self.assertEqual(unknown_with_password.status_code, status.HTTP_200_OK)
+        self.assertEqual(known.data["detail"], unknown_with_password.data["detail"])
+        mock_send.assert_called_once()
+        self.assertEqual(mock_send.call_args.kwargs["to"], "committee@gim.ac.in")
+
+    @patch("base.tasks.send_login_otp_email", return_value=True)
+    def test_login_request_otp_unknown_student_email(self, mock_send):
+        response = self.client.post(
             "/api/v1/auth/login/request-otp",
             {"email": "nobody@gim.ac.in"},
             format="json",
         )
-        self.assertEqual(known.status_code, status.HTTP_200_OK)
-        self.assertEqual(unknown.status_code, status.HTTP_200_OK)
-        self.assertEqual(known.data["detail"], unknown.data["detail"])
-        mock_send.assert_called_once()
-        self.assertEqual(mock_send.call_args.kwargs["to"], "committee@gim.ac.in")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(response.data["code"], "ACCOUNT_NOT_FOUND")
+        self.assertEqual(response.data["redirectTo"], "signup")
+        mock_send.assert_not_called()
 
     @patch("base.tasks.send_login_otp_email", return_value=True)
     def test_login_request_otp_student_sends_email(self, mock_send):
@@ -442,6 +455,16 @@ class AuthAPITests(APITestCase):
         access = AccessToken(response.data["access"])
         self.assertEqual(str(access["user_id"]), str(user.id))
 
+    def test_password_login_unknown_email(self):
+        response = self.client.post(
+            "/api/v1/auth/login",
+            {"email": "nobody@gim.ac.in", "password": self.password},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(response.data["code"], "ACCOUNT_NOT_FOUND")
+        self.assertEqual(response.data["redirectTo"], "signup")
+
     def test_password_login_wrong_password(self):
         self._create_student(verified=True)
         response = self.client.post(
@@ -451,6 +474,7 @@ class AuthAPITests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertEqual(response.data["code"], "AUTHENTICATION_FAILED")
+        self.assertEqual(response.data["detail"], "Incorrect password.")
 
     def test_password_login_rejects_admin(self):
         user, _ = self._create_administrator()
