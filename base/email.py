@@ -205,11 +205,6 @@ def admin_frontend_url() -> str:
     return getattr(settings, "ADMIN_FRONTEND_URL", frontend_url()).rstrip("/")
 
 
-def build_verify_email_link(token: str) -> str:
-    """Deep link for email verification (`/auth/verify?token=`)."""
-    return f"{frontend_url()}/auth/verify?token={token}"
-
-
 def build_reset_password_link(token: str, *, is_admin: bool = False) -> str:
     """Deep link for password reset (`/auth/reset?token=`)."""
     origin = admin_frontend_url() if is_admin else frontend_url()
@@ -257,20 +252,6 @@ def send_login_otp_email(*, to: str, otp: str, name: str = "") -> bool:
     return send_email(to=to, subject=subject, html=html, text=text)
 
 
-def send_verify_email(
-    *, to: str, otp: str, link: str, name: str = "", email: str = ""
-) -> bool:
-    """Render verify mail with a greeting name + address, never template `user`."""
-    address = (email or to or "").strip()
-    greeting = resolve_email_name(name=name, email=address or to)
-    subject = personalized_subject("Verify your Lundrii email", greeting)
-    html, text = _render_email(
-        "verify_email",
-        {"otp": otp, "link": link, "name": greeting, "email": address},
-    )
-    return send_email(to=to, subject=subject, html=html, text=text)
-
-
 def send_password_reset_email(*, to: str, otp: str, link: str, name: str = "") -> bool:
     greeting = resolve_email_name(name=name, email=to)
     subject = personalized_subject("Reset your Lundrii password", greeting)
@@ -278,19 +259,6 @@ def send_password_reset_email(*, to: str, otp: str, link: str, name: str = "") -
         "password_reset", {"otp": otp, "link": link, "name": greeting}
     )
     return send_email(to=to, subject=subject, html=html, text=text)
-
-
-def send_verify_email_with_token(
-    *, to: str, otp: str, token: str, name: str = "", email: str = ""
-) -> bool:
-    """Wave 2a helper: build verify URL from a cached one-time token."""
-    return send_verify_email(
-        to=to,
-        otp=otp,
-        link=build_verify_email_link(token),
-        name=name,
-        email=email or to,
-    )
 
 
 def send_password_reset_email_with_token(

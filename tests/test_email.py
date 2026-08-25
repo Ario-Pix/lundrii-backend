@@ -11,8 +11,6 @@ from base.email import (
     send_login_otp_email,
     send_password_reset_email,
     send_password_reset_email_with_token,
-    send_verify_email,
-    send_verify_email_with_token,
 )
 from base.management.commands.send_test_emails import DUMMY_NAME, DUMMY_OTP, DUMMY_TOKEN
 
@@ -86,52 +84,6 @@ class ResendTemplateTests(SimpleTestCase):
         self.assertEqual(params["subject"], "ada, your Lundrii login code")
         self.assertIn("Hi ada,", params["html"])
         self.assertIn("Hi ada,", params["text"])
-
-    @patch("resend.Emails.send")
-    def test_verify_email_includes_otp_and_frontend_link(self, mock_send):
-        mock_send.return_value = {"id": "email_test"}
-        link = "https://app.lundrii.test/auth/verify?token=abc"
-        self.assertTrue(
-            send_verify_email(
-                to="ada@gim.ac.in",
-                otp="111222",
-                link=link,
-                name="Ada Lovelace",
-                email="ada@gim.ac.in",
-            )
-        )
-        params = _resend_payload(mock_send)
-        self.assertEqual(params["subject"], "Ada Lovelace, verify your Lundrii email")
-        self.assertIn("111222", params["html"])
-        self.assertIn("111222", params["text"])
-        self.assertIn(link, params["html"])
-        self.assertIn(link, params["text"])
-        self.assertIn("Hi Ada Lovelace,", params["html"])
-        self.assertIn("Hi Ada Lovelace,", params["text"])
-        self.assertIn("ada@gim.ac.in", params["html"])
-        self.assertIn("ada@gim.ac.in", params["text"])
-        self.assertNotIn("Aarav Mehta", params["html"])
-        self.assertNotIn("Aarav Mehta", params["text"])
-
-    @patch("resend.Emails.send")
-    def test_verify_email_with_token_builds_frontend_url(self, mock_send):
-        mock_send.return_value = {"id": "email_test"}
-        send_verify_email_with_token(
-            to="ada@gim.ac.in",
-            otp="333444",
-            token="tok-v",
-            name="Ada Lovelace",
-            email="ada@gim.ac.in",
-        )
-        params = _resend_payload(mock_send)
-        expected = "https://app.lundrii.test/auth/verify?token=tok-v"
-        self.assertIn(expected, params["html"])
-        self.assertIn(expected, params["text"])
-        self.assertIn("Hi Ada Lovelace,", params["html"])
-        self.assertIn("Hi Ada Lovelace,", params["text"])
-        self.assertIn("ada@gim.ac.in", params["html"])
-        self.assertNotIn("Aarav Mehta", params["html"])
-        self.assertNotIn("Aarav Mehta", params["text"])
 
     @patch("resend.Emails.send")
     def test_resend_error_payload_is_not_success(self, mock_send):
@@ -230,9 +182,6 @@ class SendTestEmailsCommandTests(SimpleTestCase):
         with (
             patch("base.management.commands.send_test_emails.send_login_otp_email") as login,
             patch(
-                "base.management.commands.send_test_emails.send_verify_email_with_token"
-            ) as verify,
-            patch(
                 "base.management.commands.send_test_emails.send_password_reset_email_with_token"
             ) as reset,
             patch(
@@ -240,20 +189,12 @@ class SendTestEmailsCommandTests(SimpleTestCase):
             ) as booking,
         ):
             login.return_value = True
-            verify.return_value = True
             reset.return_value = True
             booking.return_value = True
             call_command("send_test_emails", "--to", "patharv777@gmail.com")
 
         login.assert_called_once_with(
             to="patharv777@gmail.com", otp=DUMMY_OTP, name=DUMMY_NAME
-        )
-        verify.assert_called_once_with(
-            to="patharv777@gmail.com",
-            otp=DUMMY_OTP,
-            token=DUMMY_TOKEN,
-            name=DUMMY_NAME,
-            email="patharv777@gmail.com",
         )
         reset.assert_called_once_with(
             to="patharv777@gmail.com",
@@ -270,10 +211,6 @@ class SendTestEmailsCommandTests(SimpleTestCase):
             patch(
                 "base.management.commands.send_test_emails.send_login_otp_email",
                 return_value=False,
-            ),
-            patch(
-                "base.management.commands.send_test_emails.send_verify_email_with_token",
-                return_value=True,
             ),
             patch(
                 "base.management.commands.send_test_emails.send_password_reset_email_with_token",

@@ -1,5 +1,5 @@
 """
-Cache-backed hashed OTPs (login / verify-email / reset).
+Cache-backed hashed OTPs (login / reset).
 
 Keys (never store plaintext OTPs):
   auth:otp:{purpose}:{email}        hashed 6-digit OTP
@@ -23,7 +23,6 @@ from base.email import announce_otp
 
 class OtpPurpose(str, Enum):
     LOGIN = "login"
-    VERIFY = "verify"
     RESET = "reset"
 
 
@@ -80,7 +79,6 @@ def otp_ttl_seconds(purpose: str | OtpPurpose) -> int:
     purpose = _purpose(purpose)
     mapping = {
         OtpPurpose.LOGIN.value: int(getattr(settings, "OTP_TTL_SECONDS", 600)),
-        OtpPurpose.VERIFY.value: int(getattr(settings, "OTP_VERIFY_TTL_SECONDS", 1800)),
         OtpPurpose.RESET.value: int(getattr(settings, "OTP_RESET_TTL_SECONDS", 3600)),
     }
     return mapping[purpose]

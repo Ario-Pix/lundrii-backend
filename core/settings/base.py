@@ -367,9 +367,7 @@ MCP_PUBLIC_URL = os.getenv("MCP_PUBLIC_URL", "").strip().rstrip("/")
 
 # Auth cache TTLs / limits (OTP + one-time links live in CACHES, not DB)
 OTP_TTL_SECONDS = 600  # login OTP, 10 min
-OTP_VERIFY_TTL_SECONDS = 1800  # 30 min
 OTP_RESET_TTL_SECONDS = 3600  # 1 h
-VERIFY_LINK_TTL_SECONDS = 1800  # 30 min
 RESET_LINK_TTL_SECONDS = 3600  # 1 h
 OTP_MAX_ATTEMPTS = 5
 OTP_RATE_LIMIT_MAX = 5

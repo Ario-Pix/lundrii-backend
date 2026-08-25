@@ -1,7 +1,7 @@
 """
 Cache infrastructure: Django's built-in backends only, no Redis.
 
-OTPs, one-time verify/reset links and rate-limit counters all live in the cache
+OTPs, one-time reset links and rate-limit counters all live in the cache
 rather than the database, so the cache is load-bearing for authentication. These
 tests pin the two things that could silently break it:
 
@@ -20,9 +20,7 @@ from django.test import TestCase, TransactionTestCase, override_settings
 from authentication.services.hashing import hash_secret
 from authentication.services.links import (
     consume_reset_link,
-    consume_verify_link,
     create_reset_link,
-    create_verify_link,
     link_cache_key,
 )
 from authentication.services.otp import (
@@ -128,14 +126,11 @@ class CacheBackendBehaviourMixin:
 
     def test_one_time_links_round_trip_and_are_single_use(self):
         user_id = "33333333-3333-3333-3333-333333333333"
-        verify_token = create_verify_link(user_id)
         reset_token = create_reset_link(user_id)
 
         # The plaintext token is never a cache key.
-        self.assertNotIn(verify_token, link_cache_key("verify", verify_token))
+        self.assertNotIn(reset_token, link_cache_key("reset", reset_token))
 
-        self.assertEqual(consume_verify_link(verify_token), user_id)
-        self.assertIsNone(consume_verify_link(verify_token))
         self.assertEqual(consume_reset_link(reset_token), user_id)
         self.assertIsNone(consume_reset_link(reset_token))
 

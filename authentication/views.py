@@ -1,4 +1,4 @@
-"""Auth HTTP APIs: password login, OTP login, verify email, forgot/reset."""
+"""Auth HTTP APIs: password login, OTP login, forgot/reset."""
 
 from __future__ import annotations
 
@@ -22,7 +22,6 @@ from authentication.serializers import (
     RegisterSerializer,
     ResetPasswordSerializer,
     SignupOptionsResponseSerializer,
-    VerifyEmailSerializer,
 )
 from authentication.services import (
     OtpCooldown,
@@ -31,9 +30,7 @@ from authentication.services import (
     OtpRateLimited,
     create_otp,
     create_reset_link,
-    create_verify_link,
     consume_reset_link,
-    consume_verify_link,
     issue_jwt_pair,
     record_otp_send,
     verify_otp,
@@ -47,7 +44,6 @@ from base.email import send_password_reset_email_with_token
 from base.tasks import (
     send_login_otp_email_task,
     send_password_reset_email_task,
-    send_verify_email_task,
 )
 from base.exceptions import (
     ACCOUNT_ALREADY_EXISTS,
@@ -55,7 +51,6 @@ from base.exceptions import (
     AUTHENTICATION_FAILED,
     DOMAIN_REJECTED,
     INVALID_OTP,
-    NOT_FOUND,
     RATE_LIMITED,
     SUSPENDED,
     VALIDATION_ERROR,
@@ -70,9 +65,6 @@ User = get_user_model()
 OPAQUE_LOGIN = "If an account exists for this email, a login code has been sent."
 OPAQUE_FORGOT = (
     "If an account exists for this email, password reset instructions have been sent."
-)
-OPAQUE_RESEND = (
-    "If an unverified account exists for this email, a verification email has been sent."
 )
 OPAQUE_CREDENTIALS = "Invalid email or password."
 
@@ -292,7 +284,7 @@ class RegisterView(APIView):
                     email=email,
                     password=data["password"],
                 )
-                student = Student.objects.create(
+                Student.objects.create(
                     user=user,
                     institute=institute,
                     name=data["name"],
@@ -300,6 +292,7 @@ class RegisterView(APIView):
                     whatsapp_opt_in=data["whatsapp_opt_in"],
                     home_hostel=hostel,
                     gender="",
+                    email_verified_at=timezone.now(),
                 )
         except IntegrityError as exc:
             raise APIError(
@@ -308,22 +301,9 @@ class RegisterView(APIView):
                 extra={"redirectTo": "login"},
             ) from exc
 
-        try:
-            otp = create_otp(email, OtpPurpose.VERIFY)
-        except (OtpCooldown, OtpRateLimited, OtpLocked) as exc:
-            raise_for_otp_service(exc)
-        token = create_verify_link(user.id)
-        send_verify_email_task.enqueue(
-            to=user.email,
-            otp=otp,
-            token=token,
-            name=student.name,
-            email=user.email,
-        )
-
         return Response(
             {
-                "detail": "Verification email sent.",
+                "detail": "Account created.",
                 "email": user.email,
             },
             status=status.HTTP_201_CREATED,
@@ -485,78 +465,6 @@ class LogoutView(APIView):
 class RefreshView(TokenRefreshView):
     permission_classes = [AllowAny]
     authentication_classes: list = []
-
-
-class VerifyEmailView(APIView):
-    permission_classes = [AllowAny]
-    authentication_classes: list = []
-    serializer_class = VerifyEmailSerializer
-
-    def post(self, request):
-        ser = VerifyEmailSerializer(data=request.data)
-        ser.is_valid(raise_exception=True)
-        data = ser.validated_data
-
-        if data.get("token"):
-            user_id = consume_verify_link(data["token"])
-            if not user_id:
-                raise APIError(INVALID_OTP, detail="Invalid or expired verification link.")
-            user = User.objects.filter(pk=user_id, is_active=True).first()
-            if user is None:
-                raise APIError(INVALID_OTP, detail="Invalid or expired verification link.")
-        else:
-            verify_otp_or_invalid(data["email"], data["otp"], OtpPurpose.VERIFY)
-            user = _active_user_by_email(data["email"])
-            if user is None:
-                raise APIError(INVALID_OTP, detail="Invalid or expired code.")
-
-        student = _get_student(user)
-        if student is None:
-            raise APIError(
-                NOT_FOUND,
-                detail="No student account found.",
-                status_code=status.HTTP_404_NOT_FOUND,
-            )
-
-        if student.email_verified_at is None:
-            student.email_verified_at = timezone.now()
-            student.save(update_fields=["email_verified_at", "updated_at"])
-
-        return Response(
-            {
-                "detail": "Email verified.",
-                "emailVerified": True,
-                "email": user.email,
-            }
-        )
-
-
-class ResendVerificationView(APIView):
-    permission_classes = [AllowAny]
-    authentication_classes: list = []
-    serializer_class = EmailSerializer
-
-    def post(self, request):
-        ser = EmailSerializer(data=request.data)
-        ser.is_valid(raise_exception=True)
-        email = ser.validated_data["email"]
-
-        record_send_or_rate_limit(email, OtpPurpose.VERIFY)
-
-        user = _active_user_by_email(email)
-        student = _get_student(user) if user is not None else None
-        if student is not None and student.email_verified_at is None:
-            otp = create_otp(email, OtpPurpose.VERIFY, record_send=False)
-            token = create_verify_link(user.id)
-            send_verify_email_task.enqueue(
-                to=user.email,
-                otp=otp,
-                token=token,
-                name=student.name,
-                email=user.email,
-            )
-
-        return Response({"detail": OPAQUE_RESEND})
 
 
 class ForgotPasswordView(APIView):

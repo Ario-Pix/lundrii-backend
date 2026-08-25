@@ -127,25 +127,6 @@ class LogoutSerializer(serializers.Serializer):
         return value
 
 
-class VerifyEmailSerializer(serializers.Serializer):
-    token = serializers.CharField(required=False, allow_blank=True, default="")
-    email = serializers.EmailField(required=False, allow_blank=True)
-    otp = serializers.CharField(required=False, allow_blank=True, default="")
-
-    def validate_email(self, value: str) -> str:
-        return _normalize_email(value)
-
-    def validate(self, attrs):
-        token = (attrs.get("token") or "").strip()
-        email = attrs.get("email") or ""
-        otp = (attrs.get("otp") or "").strip()
-        if token:
-            return {"token": token}
-        if email and otp:
-            return {"email": email, "otp": otp}
-        raise serializers.ValidationError("Provide a token, or email and otp.")
-
-
 class ResetPasswordSerializer(serializers.Serializer):
     token = serializers.CharField(required=False, allow_blank=True, default="")
     email = serializers.EmailField(required=False, allow_blank=True)

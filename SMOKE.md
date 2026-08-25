@@ -6,8 +6,7 @@ OTP codes print to the runserver console when `DEBUG=True` and `RESEND_API_KEY` 
 
 | Flutter screen | Exercise | Endpoint |
 |---|---|---|
-| Sign up | Register + domain reject | `POST /auth/register` |
-| Verify email | Link token **or** email+OTP; resend | `POST /auth/verify-email`, `POST /auth/resend-verification` |
+| Sign up | Register (email verified at create) + domain reject | `POST /auth/register` |
 | Sign in (student) | Email + password → JWT | `POST /auth/login` `{email, password}` — **students only**; admins rejected |
 | Sign in (admin OTP) | Email + password request → verify → JWT | `POST /auth/login/request-otp` `{email, password}`, `POST /auth/login/verify-otp` — OTP is sent only for active admin/super-admin with a correct password; invalid users/passwords are opaque |
 | Sign in (student OTP) | Email-only request → verify → JWT | `POST /auth/login/request-otp` `{email}`, `POST /auth/login/verify-otp` — unchanged student OTP flow |

@@ -52,7 +52,7 @@ def notification_deep_link(notification: Notification) -> str | None:
     if rel == "booking":
         return f"/bookings/{oid}" if oid else "/bookings"
     if rel == "exchange":
-        return f"/exchange/{oid}" if oid else "/exchange"
+        return f"/exchanges/{oid}" if oid else "/exchanges"
     if rel == "ticket":
         return f"/tickets/{oid}" if oid else "/tickets"
     if rel in {"strike", "suspension"}:
@@ -66,7 +66,7 @@ def notification_deep_link(notification: Notification) -> str | None:
     }:
         return "/bookings"
     if ntype in {NotificationType.EXCHANGE_REQUEST, NotificationType.EXCHANGE_OUTCOME}:
-        return "/exchange"
+        return "/exchanges"
     if ntype == NotificationType.TICKET_UPDATE:
         return "/tickets"
     if ntype in {NotificationType.STRIKE, NotificationType.SUSPENSION}:

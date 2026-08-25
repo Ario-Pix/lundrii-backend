@@ -7,7 +7,7 @@ the three properties the rest of the backend relies on:
 * the configured backend is a Django built-in and no Celery is installed;
 * enqueuing runs the work and reports success/failure on the TaskResult;
 * a Task that raises is captured, not propagated — a Resend outage must never
-  turn a successful registration or password reset into a 500.
+  turn a successful password reset into a 500.
 """
 
 import logging
@@ -28,13 +28,11 @@ from base.tasks import (
     send_booking_confirmed_email_task,
     send_login_otp_email_task,
     send_password_reset_email_task,
-    send_verify_email_task,
 )
-from laundry.models import Administrator, Gender, Hostel, Institute, Machine, MachineKind, Student
+from laundry.models import Administrator, Hostel, Institute, Machine, MachineKind, Student
 
 ALL_TASKS = (
     send_login_otp_email_task,
-    send_verify_email_task,
     send_password_reset_email_task,
     send_booking_confirmed_email_task,
 )
@@ -94,13 +92,12 @@ class ImmediateExecutionTests(SimpleTestCase):
         self.assertIsNotNone(result.finished_at)
 
     def test_arguments_are_carried_on_the_result(self):
-        with patch("base.tasks.send_verify_email_with_token", return_value=True):
-            result = send_verify_email_task.enqueue(
+        with patch("base.tasks.send_password_reset_email_with_token", return_value=True):
+            result = send_password_reset_email_task.enqueue(
                 to="aarav@gim.ac.in",
                 otp="654321",
                 token="tok-abc",
                 name="Aarav Mehta",
-                email="aarav@gim.ac.in",
             )
         self.assertEqual(result.args, [])
         self.assertEqual(
@@ -110,7 +107,6 @@ class ImmediateExecutionTests(SimpleTestCase):
                 "otp": "654321",
                 "token": "tok-abc",
                 "name": "Aarav Mehta",
-                "email": "aarav@gim.ac.in",
             },
         )
 
@@ -194,31 +190,6 @@ class ViewsEnqueueTasksTests(APITestCase):
         return user
 
     @override_settings(TASKS=DUMMY_TASKS)
-    def test_register_enqueues_a_verify_email_task(self):
-        default_task_backend.clear()
-        response = self.client.post(
-            "/api/v1/auth/register",
-            {
-                "name": "Aarav Mehta",
-                "email": "aarav.mehta@gim.ac.in",
-                "phone": "+91 98220 41127",
-                "password": self.password,
-                "hostelId": str(self.hostel.id),
-            },
-            format="json",
-        )
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-
-        results = default_task_backend.results
-        self.assertEqual(len(results), 1)
-        self.assertEqual(results[0].task.module_path, send_verify_email_task.module_path)
-        self.assertEqual(results[0].kwargs["to"], "aarav.mehta@gim.ac.in")
-        self.assertEqual(results[0].kwargs["name"], "Aarav Mehta")
-        self.assertEqual(results[0].kwargs["email"], "aarav.mehta@gim.ac.in")
-        self.assertTrue(results[0].kwargs["otp"].isdigit())
-        self.assertTrue(results[0].kwargs["token"])
-
-    @override_settings(TASKS=DUMMY_TASKS)
     def test_forgot_password_enqueues_a_reset_task(self):
         default_task_backend.clear()
         user = self._student()
@@ -250,35 +221,27 @@ class ViewsEnqueueTasksTests(APITestCase):
         )
         self.assertEqual(results[0].kwargs["name"], "Committee")
 
-    def test_registration_survives_an_email_outage(self):
+    def test_forgot_password_survives_an_email_outage(self):
         """
-        The point of routing mail through a Task: the account is still created
-        and the client still gets its 201 when the mail provider is down.
+        The point of routing mail through a Task: the client still gets its
+        200 when the mail provider is down.
         """
+        user = self._student()
         with patch(
-            "base.tasks.send_verify_email_with_token",
+            "base.tasks.send_password_reset_email_with_token",
             side_effect=RuntimeError("Resend is down"),
         ):
             logging.disable(logging.CRITICAL)
             try:
                 response = self.client.post(
-                    "/api/v1/auth/register",
-                    {
-                        "name": "Aarav Mehta",
-                        "email": "aarav.mehta@gim.ac.in",
-                        "phone": "+91 98220 41127",
-                        "password": self.password,
-                        "hostelId": str(self.hostel.id),
-                    },
+                    "/api/v1/auth/forgot-password",
+                    {"email": user.email},
                     format="json",
                 )
             finally:
                 logging.disable(logging.NOTSET)
 
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertTrue(
-            get_user_model().objects.filter(email="aarav.mehta@gim.ac.in").exists()
-        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
 
 class EmailFallbackTests(TestCase):

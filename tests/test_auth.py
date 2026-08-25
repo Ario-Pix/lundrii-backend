@@ -13,9 +13,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.services.hashing import hash_secret
 from authentication.services.links import (
     consume_reset_link,
-    consume_verify_link,
     create_reset_link,
-    create_verify_link,
     link_cache_key,
 )
 from authentication.services.otp import (
@@ -30,7 +28,7 @@ from authentication.services.otp import (
     verify_otp,
 )
 from authentication.services.tokens import issue_jwt_pair
-from base.email import build_reset_password_link, build_verify_email_link
+from base.email import build_reset_password_link
 from laundry.models import Administrator, Gender, Hostel, Institute, Machine, MachineKind, Student, SuperAdministrator
 
 
@@ -57,8 +55,8 @@ class OtpServiceTests(SimpleTestCase):
         self.assertIsNone(cache.get(otp_cache_key("login", "user@example.com")))
 
     def test_verify_wrong_code(self):
-        create_otp("user@example.com", "verify")
-        self.assertFalse(verify_otp("user@example.com", "000000", "verify"))
+        create_otp("user@example.com", "login")
+        self.assertFalse(verify_otp("user@example.com", "000000", "login"))
 
     @override_settings(OTP_MAX_ATTEMPTS=3, OTP_COOLDOWN_SECONDS=0)
     def test_lockout_after_max_attempts(self):
@@ -100,14 +98,14 @@ class LinkServiceTests(SimpleTestCase):
     def tearDown(self):
         cache.clear()
 
-    def test_verify_link_round_trip_hashed_key(self):
+    def test_reset_link_round_trip_hashed_key(self):
         user_id = "11111111-1111-1111-1111-111111111111"
-        token = create_verify_link(user_id)
-        self.assertNotIn(token, link_cache_key("verify", token).split(":")[-1])
-        stored = cache.get(link_cache_key("verify", token))
+        token = create_reset_link(user_id)
+        self.assertNotIn(token, link_cache_key("reset", token).split(":")[-1])
+        stored = cache.get(link_cache_key("reset", token))
         self.assertEqual(stored, user_id)
-        self.assertEqual(consume_verify_link(token), user_id)
-        self.assertIsNone(consume_verify_link(token))
+        self.assertEqual(consume_reset_link(token), user_id)
+        self.assertIsNone(consume_reset_link(token))
 
     def test_reset_link_unknown_token(self):
         self.assertIsNone(consume_reset_link("not-a-real-token"))
@@ -121,10 +119,6 @@ class LinkServiceTests(SimpleTestCase):
 class EmailLinkBuilderTests(SimpleTestCase):
     @override_settings(FRONTEND_URL="https://app.lundrii.test")
     def test_frontend_deep_links(self):
-        self.assertEqual(
-            build_verify_email_link("abc"),
-            "https://app.lundrii.test/auth/verify?token=abc",
-        )
         self.assertEqual(
             build_reset_password_link("xyz"),
             "https://app.lundrii.test/auth/reset?token=xyz",
@@ -206,8 +200,7 @@ class AuthAPITests(APITestCase):
         )
         return user, profile
 
-    @patch("base.tasks.send_verify_email_with_token", return_value=True)
-    def test_register_creates_user_and_sends_verify(self, mock_send):
+    def test_register_creates_verified_user(self):
         response = self.client.post(
             "/api/v1/auth/register",
             self._register_payload(floor="3rd Floor"),
@@ -215,6 +208,7 @@ class AuthAPITests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["email"], "aarav.mehta@gim.ac.in")
+        self.assertEqual(response.data["detail"], "Account created.")
         user = get_user_model().objects.get(email="aarav.mehta@gim.ac.in")
         self.assertTrue(user.check_password(self.password))
         student = user.student
@@ -222,13 +216,7 @@ class AuthAPITests(APITestCase):
         self.assertEqual(student.home_hostel_id, self.hostel.id)
         self.assertFalse(student.floor)
         self.assertEqual(student.gender, "")
-        self.assertIsNone(student.email_verified_at)
-        mock_send.assert_called_once()
-        self.assertTrue(mock_send.call_args.kwargs["otp"].isdigit())
-        self.assertTrue(mock_send.call_args.kwargs["token"])
-        self.assertEqual(mock_send.call_args.kwargs["name"], "Aarav Mehta")
-        self.assertEqual(mock_send.call_args.kwargs["email"], "aarav.mehta@gim.ac.in")
-        self.assertEqual(mock_send.call_args.kwargs["to"], "aarav.mehta@gim.ac.in")
+        self.assertIsNotNone(student.email_verified_at)
 
     def test_signup_options_lists_hostels(self):
         response = self.client.get("/api/v1/auth/signup-options")
@@ -263,8 +251,7 @@ class AuthAPITests(APITestCase):
         self.assertIn("student.gim.ac.in", response.data["allowedDomains"])
         self.assertFalse(get_user_model().objects.filter(email="aarav@gmail.com").exists())
 
-    @patch("base.tasks.send_verify_email_with_token", return_value=True)
-    def test_register_duplicate_email(self, _mock_send):
+    def test_register_duplicate_email(self):
         self._create_student()
         response = self.client.post(
             "/api/v1/auth/register",
@@ -523,67 +510,6 @@ class AuthAPITests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertEqual(response.data["code"], "AUTHENTICATION_FAILED")
-
-    @patch("base.tasks.send_verify_email_with_token", return_value=True)
-    def test_verify_email_via_otp_and_token(self, mock_send):
-        user, student = self._create_student()
-        self.client.post(
-            "/api/v1/auth/resend-verification",
-            {"email": user.email},
-            format="json",
-        )
-        otp = mock_send.call_args.kwargs["otp"]
-        token = mock_send.call_args.kwargs["token"]
-        self.assertEqual(mock_send.call_args.kwargs["name"], "Aarav Mehta")
-        self.assertEqual(mock_send.call_args.kwargs["email"], user.email)
-        self.assertEqual(mock_send.call_args.kwargs["to"], user.email)
-
-        via_otp = self.client.post(
-            "/api/v1/auth/verify-email",
-            {"email": user.email, "otp": otp},
-            format="json",
-        )
-        self.assertEqual(via_otp.status_code, status.HTTP_200_OK)
-        self.assertTrue(via_otp.data["emailVerified"])
-        student.refresh_from_db()
-        self.assertIsNotNone(student.email_verified_at)
-
-        # Token was also issued; consuming after OTP verify is still idempotent
-        # only if unused — this token should still work as a no-op verify.
-        via_token = self.client.post(
-            "/api/v1/auth/verify-email",
-            {"token": token},
-            format="json",
-        )
-        self.assertEqual(via_token.status_code, status.HTTP_200_OK)
-
-    def test_verify_email_invalid_token(self):
-        response = self.client.post(
-            "/api/v1/auth/verify-email",
-            {"token": "not-a-real-token"},
-            format="json",
-        )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data["code"], "INVALID_OTP")
-
-    @override_settings(OTP_COOLDOWN_SECONDS=60)
-    @patch("base.tasks.send_verify_email_with_token", return_value=True)
-    def test_resend_verification_cooldown(self, mock_send):
-        self._create_student()
-        first = self.client.post(
-            "/api/v1/auth/resend-verification",
-            {"email": "aarav.mehta@gim.ac.in"},
-            format="json",
-        )
-        second = self.client.post(
-            "/api/v1/auth/resend-verification",
-            {"email": "aarav.mehta@gim.ac.in"},
-            format="json",
-        )
-        self.assertEqual(first.status_code, status.HTTP_200_OK)
-        self.assertEqual(second.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
-        self.assertEqual(second.data["code"], "RATE_LIMITED")
-        self.assertEqual(mock_send.call_count, 1)
 
     @patch("base.tasks.send_password_reset_email_with_token", return_value=True)
     def test_forgot_and_reset_via_token_issues_jwt(self, mock_send):

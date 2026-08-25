@@ -106,8 +106,6 @@ class RouteInventoryTests(SimpleTestCase):
             "auth-login-verify-otp",
             "auth-logout",
             "auth-refresh",
-            "auth-verify-email",
-            "auth-resend-verification",
             "auth-forgot-password",
             "auth-reset-password",
             # Student
@@ -223,7 +221,6 @@ class AnonymousAccessTests(APITestCase):
             "/api/v1/auth/login",
             "/api/v1/auth/register",
             "/api/v1/auth/forgot-password",
-            "/api/v1/auth/verify-email",
         ):
             with self.subTest(path=path):
                 response = self.client.post(path, {}, format="json")

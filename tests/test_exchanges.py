@@ -21,12 +21,14 @@ from laundry.models import (
     NotificationType,
     Student,
 )
+from base.exceptions import APIError
 from laundry.services.exchanges import (
     approve_exchange,
     create_exchange,
     exchanges_qs,
     expire_stale_pendings,
 )
+from laundry.services.notifications import notification_deep_link
 
 User = get_user_model()
 
@@ -203,6 +205,95 @@ class ExchangeServiceTests(ExchangeFixtureMixin, TestCase):
         list(exchanges_qs(self.holder, direction="incoming"))
         exchange.refresh_from_db()
         self.assertEqual(exchange.status, ExchangeStatus.EXPIRED)
+
+    def test_competing_pending_expires_after_approve(self):
+        """Two requesters pending on the same slot; approve one → other becomes stale."""
+        competitor = self.make_student(
+            "diya@gim.ac.in", "Diya Nair", Gender.MALE
+        )
+        target = self.add_booking(self.holder, self.washer, aware(2026, 8, 9, 16))
+        first = create_exchange(
+            self.requester,
+            kind=ExchangeKind.REQUEST,
+            target_booking_id=target.id,
+            now=self.now,
+        )
+        second = create_exchange(
+            competitor,
+            kind=ExchangeKind.REQUEST,
+            target_booking_id=target.id,
+            now=self.now,
+        )
+        self.assertEqual(first.status, ExchangeStatus.PENDING)
+        self.assertEqual(second.status, ExchangeStatus.PENDING)
+
+        result = approve_exchange(self.holder, first, now=self.now)
+        self.assertEqual(result.status, ExchangeStatus.APPROVED)
+        target.refresh_from_db()
+        self.assertEqual(target.student_id, self.requester.pk)
+
+        expire_stale_pendings(now=self.now)
+        second.refresh_from_db()
+        self.assertEqual(second.status, ExchangeStatus.EXPIRED)
+
+    def test_create_rejects_started_slot(self):
+        target = self.add_booking(self.holder, self.washer, aware(2026, 8, 9, 9))
+        with self.assertRaises(APIError) as ctx:
+            create_exchange(
+                self.requester,
+                kind=ExchangeKind.REQUEST,
+                target_booking_id=target.id,
+                now=self.now,
+            )
+        self.assertEqual(ctx.exception.code, "VALIDATION_ERROR")
+        self.assertIn("started", str(ctx.exception.detail).lower())
+
+    def test_swap_requires_offered_booking(self):
+        target = self.add_booking(self.holder, self.washer, aware(2026, 8, 9, 16))
+        with self.assertRaises(APIError) as ctx:
+            create_exchange(
+                self.requester,
+                kind=ExchangeKind.SWAP,
+                target_booking_id=target.id,
+                offered_booking_id=None,
+                now=self.now,
+            )
+        self.assertEqual(ctx.exception.code, "VALIDATION_ERROR")
+        self.assertIn("offered", str(ctx.exception.detail).lower())
+
+    def test_swap_stale_when_offered_ownership_changes(self):
+        third = self.make_student("aarav@gim.ac.in", "Aarav Mehta", Gender.MALE)
+        target = self.add_booking(self.holder, self.washer, aware(2026, 8, 9, 16))
+        offered = self.add_booking(
+            self.requester, self.washer_b, aware(2026, 8, 9, 18)
+        )
+        exchange = create_exchange(
+            self.requester,
+            kind=ExchangeKind.SWAP,
+            target_booking_id=target.id,
+            offered_booking_id=offered.id,
+            now=self.now,
+        )
+        offered.student = third
+        offered.save(update_fields=["student", "updated_at"])
+        expire_stale_pendings(now=self.now)
+        exchange.refresh_from_db()
+        self.assertEqual(exchange.status, ExchangeStatus.EXPIRED)
+
+    def test_exchange_notification_deep_link(self):
+        target = self.add_booking(self.holder, self.washer, aware(2026, 8, 9, 16))
+        exchange = create_exchange(
+            self.requester,
+            kind=ExchangeKind.REQUEST,
+            target_booking_id=target.id,
+            now=self.now,
+        )
+        note = Notification.objects.get(
+            student=self.holder,
+            type=NotificationType.EXCHANGE_REQUEST,
+            related_object_id=exchange.id,
+        )
+        self.assertEqual(notification_deep_link(note), f"/exchanges/{exchange.id}")
 
 
 class ExchangeAPITests(ExchangeFixtureMixin, TestCase):

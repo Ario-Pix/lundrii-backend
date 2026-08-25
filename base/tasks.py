@@ -27,7 +27,6 @@ from base.email import (
     send_booking_confirmed_email,
     send_login_otp_email,
     send_password_reset_email_with_token,
-    send_verify_email_with_token,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,16 +36,6 @@ logger = logging.getLogger(__name__)
 def send_login_otp_email_task(*, to: str, otp: str, name: str = "") -> bool:
     """Email a one-time login code."""
     return send_login_otp_email(to=to, otp=otp, name=name)
-
-
-@task
-def send_verify_email_task(
-    *, to: str, otp: str, token: str, name: str = "", email: str = ""
-) -> bool:
-    """Email an email-verification code plus its one-time deep link."""
-    return send_verify_email_with_token(
-        to=to, otp=otp, token=token, name=name, email=email or to
-    )
 
 
 @task

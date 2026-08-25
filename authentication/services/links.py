@@ -1,8 +1,7 @@
 """
-One-time verify-email and password-reset tokens in cache.
+One-time password-reset tokens in cache.
 
 Keys (token in the key is hashed; value is user_id):
-  auth:link:verify:{token_hash} -> user_id
   auth:link:reset:{token_hash}  -> user_id
 """
 
@@ -19,7 +18,6 @@ from authentication.services.hashing import hash_secret
 
 
 class LinkPurpose(str, Enum):
-    VERIFY = "verify"
     RESET = "reset"
 
 
@@ -40,9 +38,7 @@ def _user_id_str(user_id: str | UUID) -> str:
 
 
 def link_ttl_seconds(purpose: str | LinkPurpose) -> int:
-    purpose = _purpose(purpose)
-    if purpose == LinkPurpose.VERIFY.value:
-        return int(getattr(settings, "VERIFY_LINK_TTL_SECONDS", 1800))
+    _purpose(purpose)  # validate
     return int(getattr(settings, "RESET_LINK_TTL_SECONDS", 3600))
 
 
@@ -92,16 +88,8 @@ def delete_link(token: str, purpose: str | LinkPurpose) -> None:
     cache.delete(link_cache_key(purpose, raw))
 
 
-def create_verify_link(user_id: str | UUID) -> str:
-    return create_link(user_id, LinkPurpose.VERIFY)
-
-
 def create_reset_link(user_id: str | UUID) -> str:
     return create_link(user_id, LinkPurpose.RESET)
-
-
-def consume_verify_link(token: str) -> str | None:
-    return consume_link(token, LinkPurpose.VERIFY)
 
 
 def consume_reset_link(token: str) -> str | None:

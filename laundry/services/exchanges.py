@@ -103,11 +103,15 @@ def _is_stale(exchange: Exchange, now: datetime) -> bool:
         return True
     if target.starts_at <= now:
         return True
+    if target.student_id != exchange.holder_id:
+        return True
     offered = exchange.offered_booking
     if offered is not None:
         if not offered.is_active or offered.cancelled_at is not None:
             return True
         if offered.starts_at <= now:
+            return True
+        if offered.student_id != exchange.requester_id:
             return True
     return False
 
@@ -463,14 +467,30 @@ def reject_exchange(
             status_code=status.HTTP_404_NOT_FOUND,
         )
     expire_stale_pendings(student=holder, now=now)
-    exchange = Exchange.objects.select_related(*EXCHANGE_PREFETCH).get(pk=exchange.pk)
-    if exchange.status == ExchangeStatus.EXPIRED:
-        return exchange
-    _assert_pending(exchange)
-    exchange.status = ExchangeStatus.REJECTED
-    exchange.resolved_at = now
-    exchange.reject_note = (note or "").strip()
-    exchange.save(update_fields=["status", "resolved_at", "reject_note", "updated_at"])
+
+    with transaction.atomic():
+        locked = (
+            Exchange.objects.select_for_update()
+            .select_related(*EXCHANGE_PREFETCH)
+            .get(pk=exchange.pk)
+        )
+        if locked.holder_id != holder.pk:
+            raise APIError(
+                NOT_FOUND,
+                detail="Exchange not found.",
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        if locked.status == ExchangeStatus.EXPIRED:
+            return locked
+        _assert_pending(locked)
+        if _is_stale(locked, now):
+            return _mark_expired(locked, now)
+        locked.status = ExchangeStatus.REJECTED
+        locked.resolved_at = now
+        locked.reject_note = (note or "").strip()
+        locked.save(update_fields=["status", "resolved_at", "reject_note", "updated_at"])
+
+    exchange = Exchange.objects.select_related(*EXCHANGE_PREFETCH).get(pk=locked.pk)
     body = f"{holder.name} declined your exchange request."
     if exchange.reject_note:
         body = f"{body} Note: {exchange.reject_note}"
@@ -480,7 +500,7 @@ def reject_exchange(
         "Exchange declined",
         body,
     )
-    return Exchange.objects.select_related(*EXCHANGE_PREFETCH).get(pk=exchange.pk)
+    return exchange
 
 
 def withdraw_exchange(
@@ -497,18 +517,34 @@ def withdraw_exchange(
             status_code=status.HTTP_404_NOT_FOUND,
         )
     expire_stale_pendings(student=requester, now=now)
-    exchange = Exchange.objects.select_related(*EXCHANGE_PREFETCH).get(pk=exchange.pk)
-    if exchange.status == ExchangeStatus.EXPIRED:
-        return exchange
-    _assert_pending(exchange)
-    exchange.status = ExchangeStatus.REJECTED
-    exchange.resolved_at = now
-    exchange.failure_reason = "Withdrawn by requester."
-    exchange.save(update_fields=["status", "resolved_at", "failure_reason", "updated_at"])
+
+    with transaction.atomic():
+        locked = (
+            Exchange.objects.select_for_update()
+            .select_related(*EXCHANGE_PREFETCH)
+            .get(pk=exchange.pk)
+        )
+        if locked.requester_id != requester.pk:
+            raise APIError(
+                NOT_FOUND,
+                detail="Exchange not found.",
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        if locked.status == ExchangeStatus.EXPIRED:
+            return locked
+        _assert_pending(locked)
+        if _is_stale(locked, now):
+            return _mark_expired(locked, now)
+        locked.status = ExchangeStatus.REJECTED
+        locked.resolved_at = now
+        locked.failure_reason = "Withdrawn by requester."
+        locked.save(update_fields=["status", "resolved_at", "failure_reason", "updated_at"])
+
+    exchange = Exchange.objects.select_related(*EXCHANGE_PREFETCH).get(pk=locked.pk)
     _notify_outcome(
         exchange.holder,
         exchange,
         "Exchange withdrawn",
         f"{requester.name} withdrew their exchange request.",
     )
-    return Exchange.objects.select_related(*EXCHANGE_PREFETCH).get(pk=exchange.pk)
+    return exchange
